@@ -3,7 +3,7 @@ const LEGACY_STORAGE_KEYS = ["travel-ledger-v1"];
 const CLOUD_STATE_KEY = "travel-ledger-cloud";
 const SUPABASE_URL = "https://qvphpeetzyvnwaehrifa.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cGhwZWV0enl2bndhZWhyaWZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NzIxMTAsImV4cCI6MjA5ODE0ODExMH0.k3FL_Ywt377guTfjzTu1bgucShpRfmnQCdxn4SqikuA";
-const PUBLIC_APP_URL = "https://lunelucas.github.io/altas/";
+const PUBLIC_APP_URL = "https://lunelucas.github.io/Journa/";
 const defaultFamilies = [
   { id: "family-a", name: "乐家" },
   { id: "family-b", name: "祺家" },
