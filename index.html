@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>三家庭旅游记账</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23f6f1e7'/%3E%3Ccircle cx='24' cy='26' r='13' fill='%23a9ceb5'/%3E%3Ccircle cx='40' cy='25' r='13' fill='%23b9c9e6'/%3E%3Ccircle cx='32' cy='40' r='13' fill='%23efc2bf'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">旅行账本</p>
+          <h1>三家庭旅游记账</h1>
+        </div>
+        <div class="header-actions">
+          <span class="sync-status" id="syncStatus">本地账本</span>
+          <button class="ghost-button" id="createCloudLedgerButton" type="button">创建云账本</button>
+          <button class="ghost-button" id="copyShareLinkButton" type="button" hidden>复制邀请链接</button>
+          <button class="ghost-button" id="openSettingsButton" type="button">设置</button>
+        </div>
+      </header>
+
+      <div class="app-view" id="ledgerView">
+        <section class="summary-band" aria-label="账本总览">
+          <div class="metric primary" id="totalMetric">
+            <span>总支出</span>
+            <strong id="totalAmount">¥0.00</strong>
+          </div>
+          <div class="metric">
+            <span>人均费用</span>
+            <strong id="shareAmount">¥0.00</strong>
+          </div>
+          <div class="metric">
+            <span>账单笔数</span>
+            <strong id="expenseCount">0</strong>
+          </div>
+        </section>
+
+        <div class="workspace">
+          <section class="entry-panel" aria-label="记一笔账">
+            <div class="section-heading">
+              <h2>记一笔账</h2>
+            </div>
+
+            <form id="expenseForm" class="expense-form" novalidate>
+              <fieldset class="payer-field full-row" id="payerField">
+                <legend>付款家庭</legend>
+                <div id="familyRoster" class="family-roster" aria-label="选择付款家庭"></div>
+                <p class="field-error" id="payerError" role="alert"></p>
+              </fieldset>
+
+              <label class="amount-label full-row" id="amountLabel">
+                <span>金额</span>
+                <span class="amount-field">
+                  <span class="currency-mark">¥</span>
+                  <input id="amountInput" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" />
+                </span>
+              </label>
+
+              <fieldset class="category-picker full-row">
+                <legend>类别</legend>
+                <input id="categoryInput" name="category" type="hidden" />
+                <div id="categoryChips" class="category-chips selectable-category-chips" aria-label="选择类别"></div>
+                <div id="categoryForm" class="category-form inline-category-form" aria-label="新增类别">
+                  <input id="newCategoryInput" type="text" maxlength="12" placeholder="新增类别" />
+                  <button class="secondary-button" type="button">添加</button>
+                </div>
+              </fieldset>
+
+              <label>
+                <span>日期</span>
+                <input id="dateInput" name="date" type="date" />
+              </label>
+
+              <label class="full-row">
+                <span>备注</span>
+                <input id="noteInput" name="note" type="text" maxlength="80" placeholder="例如：高铁票、晚餐、酒店" />
+              </label>
+
+              <div class="edit-banner full-row" id="editBanner" hidden>
+                <span>正在编辑这笔账单</span>
+                <button class="inline-button" id="cancelEditButton" type="button">取消</button>
+              </div>
+
+              <p class="form-error" id="formError" role="alert"></p>
+              <button class="primary-button full-row" type="submit"><span class="button-label" id="submitButtonLabel">添加账单</span></button>
+            </form>
+
+          </section>
+
+          <section class="insights-panel" aria-label="统计和平账">
+            <div class="section-heading">
+              <h2>统计和平账</h2>
+            </div>
+
+            <div class="stats-grid">
+              <section class="stat-block">
+                <h3>各家已付</h3>
+                <div id="paidByFamily" class="stack-list"></div>
+              </section>
+
+              <section class="stat-block category-summary-block" id="categorySummaryBlock">
+                <h3>类别汇总</h3>
+                <div id="categorySummary" class="stack-list"></div>
+              </section>
+            </div>
+
+            <section class="settlement-block">
+              <h3>平账建议</h3>
+              <div id="settlementList" class="settlement-list"></div>
+            </section>
+          </section>
+        </div>
+
+        <section class="ledger-section" aria-label="账单列表">
+          <div class="section-heading">
+            <h2>账单列表</h2>
+            <div class="ledger-controls" aria-label="账单筛选">
+              <select id="ledgerFamilyFilter" aria-label="按家庭筛选"></select>
+              <select id="ledgerCategoryFilter" aria-label="按类别筛选"></select>
+            </div>
+          </div>
+          <div id="ledgerList" class="ledger-list"></div>
+        </section>
+      </div>
+
+      <section class="settings-view" id="settingsView" hidden aria-label="设置" aria-modal="true" role="dialog">
+        <button class="settings-backdrop" id="settingsBackdrop" type="button" aria-label="关闭设置"></button>
+        <aside class="settings-drawer">
+          <div class="settings-hero">
+            <div>
+              <p class="eyebrow">偏好与数据</p>
+              <h2>设置</h2>
+            </div>
+            <button class="ghost-button" id="closeSettingsButton" type="button">完成</button>
+          </div>
+
+          <div class="settings-grid">
+            <section class="settings-panel">
+              <div class="settings-panel-title">
+                <h3>家庭与规则</h3>
+                <span class="readonly-badge">人数可调</span>
+              </div>
+              <p class="settings-note">家庭名称固定，分摊金额按各家庭人数占总人数的比例计算。</p>
+              <div id="settingsFamilyList" class="settings-family-list"></div>
+              <div class="settings-rule-list">
+                <div class="settings-rule">
+                  <span>分摊方式</span>
+                  <strong>按家庭人数</strong>
+                </div>
+                <div class="settings-rule">
+                  <span>货币</span>
+                  <strong>人民币 ¥</strong>
+                </div>
+                <div class="settings-rule">
+                  <span>保存位置</span>
+                  <strong id="storageModeLabel">当前浏览器</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-panel">
+              <h3>类别管理</h3>
+              <form id="settingsCategoryForm" class="category-form settings-category-form">
+                <input id="settingsNewCategoryInput" type="text" maxlength="12" placeholder="新增类别" />
+                <button class="secondary-button" type="submit">添加</button>
+              </form>
+              <div id="settingsCategoryChips" class="category-chips settings-category-chips"></div>
+            </section>
+
+            <section class="settings-panel">
+              <h3>数据状态</h3>
+              <div id="settingsDataSummary" class="settings-data-summary"></div>
+              <button class="ghost-button danger settings-clear-button" id="settingsClearLedgerButton" type="button">清空账本</button>
+            </section>
+          </div>
+        </aside>
+      </section>
+
+      <div class="mobile-submit-bar" id="mobileSubmitBar">
+        <div class="mobile-submit-summary" id="mobileSubmitSummary">乐家 · 餐饮 · 今天</div>
+        <button class="primary-button mobile-submit-button" id="mobileSubmitButton" type="button">
+          <span class="button-label">添加账单</span>
+        </button>
+      </div>
+
+      <div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="true"></div>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
