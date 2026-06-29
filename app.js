@@ -93,6 +93,8 @@ const elements = {
 let state = loadState();
 let lastAddedExpenseId = "";
 let lastAddedCategory = "";
+let activatingPayerId = "";
+let activatingCategory = "";
 let editingExpenseId = "";
 let toastTimer = 0;
 let totalAmountText = "";
@@ -118,8 +120,8 @@ function loadState() {
           categories,
           expenses,
           activeDate: expenses.length ? normalizeDate(saved.activeDate, today) : today,
-          activeCategory: normalizeCategory(saved.activeCategory, categories[0]),
-          selectedPayerId: normalizePayerId(saved.selectedPayerId) || defaultFamilies[0].id,
+          activeCategory: "",
+          selectedPayerId: "",
           ledgerFamilyFilter: normalizePayerId(saved.ledgerFamilyFilter),
           ledgerCategoryFilter: normalizeCategoryFilter(saved.ledgerCategoryFilter, categories),
         };
@@ -135,8 +137,8 @@ function loadState() {
     categories: [...defaultCategories],
     expenses: [],
     activeDate: today,
-    activeCategory: defaultCategories[0],
-    selectedPayerId: defaultFamilies[0].id,
+    activeCategory: "",
+    selectedPayerId: "",
     ledgerFamilyFilter: "",
     ledgerCategoryFilter: "",
   };
@@ -173,6 +175,11 @@ function normalizeDate(value, fallback = todayIso()) {
 function normalizeCategory(category, fallback = defaultCategories[0]) {
   const normalized = String(category || "").trim();
   return normalized || fallback;
+}
+
+function normalizeCategorySelection(category, categories = defaultCategories) {
+  const normalized = String(category || "").trim();
+  return categories.includes(normalized) ? normalized : "";
 }
 
 function normalizeCategoryFilter(category, categories) {
@@ -276,8 +283,8 @@ function normalizeRemotePayload(payload) {
       }))
       .filter(isValidExpense),
     activeDate: state.activeDate || todayIso(),
-    activeCategory: normalizeCategory(state.activeCategory, categories[0] || defaultCategories[0]),
-    selectedPayerId: normalizePayerId(state.selectedPayerId) || defaultFamilies[0].id,
+    activeCategory: normalizeCategorySelection(state.activeCategory, categories),
+    selectedPayerId: normalizePayerId(state.selectedPayerId),
     ledgerFamilyFilter: normalizePayerId(state.ledgerFamilyFilter),
     ledgerCategoryFilter: normalizeCategoryFilter(state.ledgerCategoryFilter, categories),
   };
@@ -587,9 +594,7 @@ function render(options = {}) {
 
 function renderFormOptions() {
   elements.dateInput.value = state.activeDate;
-  if (!state.categories.includes(state.activeCategory)) {
-    state.activeCategory = state.categories[0] || defaultCategories[0];
-  }
+  state.activeCategory = normalizeCategorySelection(state.activeCategory, state.categories);
   elements.categoryInput.value = state.activeCategory;
 }
 
@@ -611,8 +616,9 @@ function renderFamilyRoster() {
   elements.familyRoster.innerHTML = state.families
     .map((family) => {
       const selected = family.id === state.selectedPayerId;
+      const activating = selected && family.id === activatingPayerId ? " is-activating" : "";
       return `
-        <button class="family-tag${selected ? " is-selected" : ""}" type="button" data-payer-id="${escapeHtml(family.id)}" style="${familyStyle(family.id)}" aria-pressed="${selected}">
+        <button class="family-tag${selected ? " is-selected" : ""}${activating}" type="button" data-payer-id="${escapeHtml(family.id)}" style="${familyStyle(family.id)}" aria-pressed="${selected}">
           <span>${escapeHtml(family.name)}</span>
         </button>
       `;
@@ -625,8 +631,9 @@ function renderCategories() {
     .map((category) => {
       const isNew = category === lastAddedCategory ? " is-entering" : "";
       const selected = category === state.activeCategory;
+      const activating = selected && category === activatingCategory ? " is-activating" : "";
       return `
-        <button class="chip category-chip selectable-category-chip${selected ? " is-selected" : ""}${isNew}" type="button" data-category="${escapeHtml(category)}" style="${categoryStyle(category)}" aria-pressed="${selected}">
+        <button class="chip category-chip selectable-category-chip${selected ? " is-selected" : ""}${isNew}${activating}" type="button" data-category="${escapeHtml(category)}" style="${categoryStyle(category)}" aria-pressed="${selected}">
           <span>${escapeHtml(formatCategoryLabel(category))}</span>
         </button>
       `;
@@ -847,8 +854,8 @@ function renderEditState() {
 }
 
 function renderMobileSubmitBar() {
-  const family = getFamilyName(state.selectedPayerId);
-  const category = formatCategoryLabel(state.activeCategory);
+  const family = state.selectedPayerId ? getFamilyName(state.selectedPayerId) : "未选家庭";
+  const category = state.activeCategory ? formatCategoryLabel(state.activeCategory) : "未选类别";
   const date = state.activeDate === todayIso() ? "今天" : state.activeDate.slice(5);
   const action = editingExpenseId ? "保存修改" : "添加账单";
   elements.mobileSubmitSummary.textContent = `${family} · ${category} · ${date}`;
@@ -957,7 +964,9 @@ function handleCategorySelection(event) {
   const button = event.target.closest("[data-category]");
   if (!button) return;
 
-  state.activeCategory = normalizeCategory(button.dataset.category, state.activeCategory);
+  const nextCategory = normalizeCategory(button.dataset.category, state.activeCategory);
+  if (nextCategory !== state.activeCategory) markCategoryActivating(nextCategory);
+  state.activeCategory = nextCategory;
   elements.categoryInput.value = state.activeCategory;
   renderCategories();
   renderMobileSubmitBar();
@@ -974,7 +983,7 @@ function handleSettingsCategoryClick(event) {
   const categoryIndex = state.categories.indexOf(category);
   state.categories = state.categories.filter((item) => item !== category);
   if (state.activeCategory === category) {
-    state.activeCategory = state.categories[0] || defaultCategories[0];
+    state.activeCategory = "";
   }
   render();
   queueCloudSettingsSync();
@@ -1109,7 +1118,9 @@ function handleFamilySelection(event) {
   const button = event.target.closest("[data-payer-id]");
   if (!button) return;
 
-  state.selectedPayerId = normalizePayerId(button.dataset.payerId);
+  const nextPayerId = normalizePayerId(button.dataset.payerId);
+  if (nextPayerId && nextPayerId !== state.selectedPayerId) markPayerActivating(nextPayerId);
+  state.selectedPayerId = nextPayerId;
   elements.payerError.textContent = "";
   applySelectedFamilyTheme();
   renderFamilyRoster();
@@ -1117,6 +1128,20 @@ function handleFamilySelection(event) {
   renderMobileSubmitBar();
   updateAmountMotionState();
   saveState();
+}
+
+function markPayerActivating(payerId) {
+  activatingPayerId = payerId;
+  window.setTimeout(() => {
+    if (activatingPayerId === payerId) activatingPayerId = "";
+  }, 760);
+}
+
+function markCategoryActivating(category) {
+  activatingCategory = category;
+  window.setTimeout(() => {
+    if (activatingCategory === category) activatingCategory = "";
+  }, 760);
 }
 
 function renderTotalMetricGradient(summary) {

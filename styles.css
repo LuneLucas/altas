@@ -439,6 +439,21 @@ h3 {
   opacity: 1;
 }
 
+.family-tag.is-activating,
+.selectable-category-chip.is-activating {
+  animation: choice-select-pop 720ms var(--settle) both;
+}
+
+.family-tag.is-activating::before,
+.selectable-category-chip.is-activating::before {
+  animation: choice-selected-fill 720ms var(--settle) both;
+}
+
+.family-tag.is-activating > span,
+.selectable-category-chip.is-activating > span {
+  animation: choice-label-settle 720ms var(--settle) both;
+}
+
 .family-tag:focus-visible {
   outline: 0;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--family-color) 20%, transparent);
@@ -1391,6 +1406,54 @@ body.settings-open {
     0 0 42px -16px var(--category-gradient);
 }
 
+@keyframes choice-select-pop {
+  0% {
+    transform: scale(0.975);
+    box-shadow:
+      0 0 0 color-mix(in srgb, currentColor 0%, transparent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  46% {
+    transform: scale(1.07);
+  }
+
+  100% {
+    transform: scale(1.036);
+  }
+}
+
+@keyframes choice-selected-fill {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.72);
+  }
+
+  54% {
+    opacity: 1;
+    transform: scaleX(1.04);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes choice-label-settle {
+  0% {
+    transform: translateY(1px);
+  }
+
+  54% {
+    transform: translateY(-1px);
+  }
+
+  100% {
+    transform: translateY(0);
+  }
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2116,6 +2179,11 @@ body.settings-open {
     font-size: 0.9rem;
   }
 
+  .family-tag,
+  .selectable-category-chip {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   .inline-category-form {
     grid-template-columns: 1fr 86px;
   }
@@ -2362,6 +2430,24 @@ body.settings-open {
 
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .family-tag:hover,
+  .selectable-category-chip:hover {
+    transform: none;
+  }
+
+  .family-tag:active,
+  .selectable-category-chip:active {
+    transform: scale(0.97);
+    transition-duration: 120ms;
+  }
+
+  .family-tag.is-selected:active,
+  .selectable-category-chip.is-selected:active {
+    transform: scale(1.01);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2376,6 +2462,7 @@ body.settings-open {
   .amount-label input,
   .amount-label .currency-mark,
   .family-tag,
+  .selectable-category-chip,
   .ledger-item,
   .primary-button {
     transform: none !important;
