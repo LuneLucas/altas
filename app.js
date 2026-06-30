@@ -44,8 +44,8 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const elements = {
   ledgerView: document.querySelector("#ledgerView"),
   settingsView: document.querySelector("#settingsView"),
-  activeLedgerSelect: document.querySelector("#activeLedgerSelect"),
-  createLedgerButton: document.querySelector("#createLedgerButton"),
+  currentLedgerLabel: document.querySelector("#currentLedgerLabel"),
+  settingsCreateLedgerButton: document.querySelector("#settingsCreateLedgerButton"),
   syncStatus: document.querySelector("#syncStatus"),
   createCloudLedgerButton: document.querySelector("#createCloudLedgerButton"),
   copyShareLinkButton: document.querySelector("#copyShareLinkButton"),
@@ -105,6 +105,8 @@ let activatingPayerId = "";
 let activatingCategory = "";
 let editingExpenseId = "";
 let toastTimer = 0;
+let settingsCloseTimer = 0;
+let ledgerSwitchTimer = 0;
 let totalAmountText = "";
 let totalAmountSwapTimer = 0;
 let cloudState = loadCloudState();
@@ -701,7 +703,7 @@ function calculateSettlements(balances) {
 
 function render(options = {}) {
   const { animateFinancialChanges = false } = options;
-  renderLedgerSwitcher();
+  renderCurrentLedgerLabel();
   updateClearLedgerButton();
   updateCloudControls();
   renderFormOptions();
@@ -719,11 +721,8 @@ function render(options = {}) {
   saveState();
 }
 
-function renderLedgerSwitcher() {
-  elements.activeLedgerSelect.innerHTML = appState.ledgers
-    .map((ledger) => `<option value="${escapeHtml(ledger.id)}">${escapeHtml(ledger.name)}</option>`)
-    .join("");
-  elements.activeLedgerSelect.value = state.id;
+function renderCurrentLedgerLabel() {
+  elements.currentLedgerLabel.textContent = `当前账本：${state.name}`;
 }
 
 function renderFormOptions() {
@@ -1308,6 +1307,7 @@ function switchLedger(ledgerId, { announce = true } = {}) {
   elements.expenseForm.reset();
   updateLedgerUrl();
   render({ animateFinancialChanges: true });
+  markLedgerSwitching();
   if (announce) showToast({ message: `已切换到“${state.name}”` });
 }
 
@@ -1358,16 +1358,27 @@ function deleteLedger(ledgerId) {
 }
 
 function openSettings() {
+  window.clearTimeout(settingsCloseTimer);
   elements.settingsView.hidden = false;
+  elements.settingsView.classList.remove("is-closing");
   document.body.classList.add("settings-open");
   renderSettings();
   elements.closeSettingsButton.focus();
 }
 
 function closeSettings() {
-  elements.settingsView.hidden = true;
-  document.body.classList.remove("settings-open");
-  elements.openSettingsButton.focus();
+  if (elements.settingsView.hidden || elements.settingsView.classList.contains("is-closing")) return;
+
+  elements.settingsView.classList.add("is-closing");
+  const delay = prefersReducedMotion() ? 0 : getCssDurationMs("--motion", 534) + 60;
+
+  window.clearTimeout(settingsCloseTimer);
+  settingsCloseTimer = window.setTimeout(() => {
+    elements.settingsView.hidden = true;
+    elements.settingsView.classList.remove("is-closing");
+    document.body.classList.remove("settings-open");
+    elements.openSettingsButton.focus();
+  }, delay);
 }
 
 function handleFamilySelection(event) {
@@ -1691,6 +1702,19 @@ function prefersReducedMotion() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
+function markLedgerSwitching() {
+  if (prefersReducedMotion()) return;
+
+  elements.ledgerView.classList.remove("is-switching-ledger");
+  void elements.ledgerView.offsetWidth;
+  elements.ledgerView.classList.add("is-switching-ledger");
+
+  window.clearTimeout(ledgerSwitchTimer);
+  ledgerSwitchTimer = window.setTimeout(() => {
+    elements.ledgerView.classList.remove("is-switching-ledger");
+  }, getCssDurationMs("--motion", 534) + 160);
+}
+
 function triggerAddEffect(payerId, amount) {
   const visual = getFamilyVisual(payerId);
   const themedGlow = colorWithAlpha(visual.color, 0.36);
@@ -1752,10 +1776,7 @@ function escapeHtml(value) {
 }
 
 elements.expenseForm.addEventListener("submit", handleExpenseSubmit);
-elements.activeLedgerSelect.addEventListener("change", () => {
-  switchLedger(elements.activeLedgerSelect.value);
-});
-elements.createLedgerButton.addEventListener("click", createLedger);
+elements.settingsCreateLedgerButton.addEventListener("click", createLedger);
 elements.categoryForm.addEventListener("click", (event) => {
   if (event.target.closest("button")) handleInlineCategoryAdd(event);
 });
