@@ -24,6 +24,14 @@
       </header>
 
       <div class="app-view" id="ledgerView">
+        <section class="ledger-switcher" aria-label="账本切换">
+          <label class="ledger-select-label">
+            <span>当前账本</span>
+            <select id="activeLedgerSelect" aria-label="选择账本"></select>
+          </label>
+          <button class="ghost-button" id="createLedgerButton" type="button">新建账本</button>
+        </section>
+
         <section class="summary-band" aria-label="账本总览">
           <div class="metric primary" id="totalMetric">
             <span>总支出</span>
@@ -139,6 +147,15 @@
           </div>
 
           <div class="settings-grid">
+            <section class="settings-panel">
+              <h3>账本管理</h3>
+              <form id="ledgerNameForm" class="ledger-name-form">
+                <input id="currentLedgerNameInput" type="text" maxlength="24" placeholder="账本名称" />
+                <button class="secondary-button" id="saveLedgerNameButton" type="submit">改名</button>
+              </form>
+              <div id="ledgerManagerList" class="ledger-manager-list"></div>
+            </section>
+
             <section class="settings-panel">
               <div class="settings-panel-title">
                 <h3>家庭与规则</h3>

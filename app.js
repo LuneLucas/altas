@@ -1,5 +1,5 @@
-const STORAGE_KEY = "travel-ledger-v2";
-const LEGACY_STORAGE_KEYS = ["travel-ledger-v1"];
+const STORAGE_KEY = "travel-ledger-v3";
+const LEGACY_STORAGE_KEYS = ["travel-ledger-v2", "travel-ledger-v1"];
 const CLOUD_STATE_KEY = "travel-ledger-cloud";
 const SUPABASE_URL = "https://qvphpeetzyvnwaehrifa.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cGhwZWV0enl2bndhZWhyaWZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NzIxMTAsImV4cCI6MjA5ODE0ODExMH0.k3FL_Ywt377guTfjzTu1bgucShpRfmnQCdxn4SqikuA";
@@ -44,6 +44,8 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const elements = {
   ledgerView: document.querySelector("#ledgerView"),
   settingsView: document.querySelector("#settingsView"),
+  activeLedgerSelect: document.querySelector("#activeLedgerSelect"),
+  createLedgerButton: document.querySelector("#createLedgerButton"),
   syncStatus: document.querySelector("#syncStatus"),
   createCloudLedgerButton: document.querySelector("#createCloudLedgerButton"),
   copyShareLinkButton: document.querySelector("#copyShareLinkButton"),
@@ -75,6 +77,10 @@ const elements = {
   categoryChips: document.querySelector("#categoryChips"),
   settingsCategoryChips: document.querySelector("#settingsCategoryChips"),
   settingsFamilyList: document.querySelector("#settingsFamilyList"),
+  ledgerNameForm: document.querySelector("#ledgerNameForm"),
+  currentLedgerNameInput: document.querySelector("#currentLedgerNameInput"),
+  saveLedgerNameButton: document.querySelector("#saveLedgerNameButton"),
+  ledgerManagerList: document.querySelector("#ledgerManagerList"),
   settingsDataSummary: document.querySelector("#settingsDataSummary"),
   storageModeLabel: document.querySelector("#storageModeLabel"),
   paidByFamily: document.querySelector("#paidByFamily"),
@@ -90,7 +96,9 @@ const elements = {
   toastHost: document.querySelector("#toastHost"),
 };
 
-let state = loadState();
+let appState = loadState();
+activateLedgerFromUrl();
+let state = getActiveLedger();
 let lastAddedExpenseId = "";
 let lastAddedCategory = "";
 let activatingPayerId = "";
@@ -105,25 +113,20 @@ let cloudReady = false;
 let pendingSettingsSync = 0;
 
 function loadState() {
-  const today = todayIso();
   const storageKeys = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS];
 
   for (const key of storageKeys) {
     try {
       const saved = JSON.parse(localStorage.getItem(key) || "null");
+      if (saved && Array.isArray(saved.ledgers)) {
+        return normalizeAppState(saved);
+      }
+
       if (saved && Array.isArray(saved.families) && Array.isArray(saved.categories) && Array.isArray(saved.expenses)) {
-        const expenses = saved.expenses.filter(isValidExpense).map(normalizeExpense);
-        const categories = normalizeCategories([...saved.categories, ...expenses.map((expense) => expense.category)]);
+        const ledger = normalizeLedger({ ...saved, name: "旅行账本" });
         return {
-          families: normalizeFamilies(saved.families),
-          familyMembers: normalizeFamilyMembers(saved.familyMembers),
-          categories,
-          expenses,
-          activeDate: expenses.length ? normalizeDate(saved.activeDate, today) : today,
-          activeCategory: "",
-          selectedPayerId: "",
-          ledgerFamilyFilter: normalizePayerId(saved.ledgerFamilyFilter),
-          ledgerCategoryFilter: normalizeCategoryFilter(saved.ledgerCategoryFilter, categories),
+          activeLedgerId: ledger.id,
+          ledgers: [ledger],
         };
       }
     } catch {
@@ -131,17 +134,118 @@ function loadState() {
     }
   }
 
+  const ledger = createEmptyLedger("旅行账本");
   return {
+    activeLedgerId: ledger.id,
+    ledgers: [ledger],
+  };
+}
+
+function normalizeAppState(saved) {
+  const ledgers = saved.ledgers.map((ledger, index) => normalizeLedger(ledger, `账本 ${index + 1}`));
+  const activeLedgerId = ledgers.some((ledger) => ledger.id === saved.activeLedgerId) ? saved.activeLedgerId : ledgers[0]?.id;
+
+  if (ledgers.length) {
+    return { activeLedgerId, ledgers };
+  }
+
+  const ledger = createEmptyLedger("旅行账本");
+  return {
+    activeLedgerId: ledger.id,
+    ledgers: [ledger],
+  };
+}
+
+function normalizeLedger(raw = {}, fallbackName = "旅行账本") {
+  const today = todayIso();
+  const expenses = Array.isArray(raw.expenses) ? raw.expenses.filter(isValidExpense).map(normalizeExpense) : [];
+  const categories = normalizeCategories([...(Array.isArray(raw.categories) ? raw.categories : []), ...expenses.map((expense) => expense.category)]);
+
+  return {
+    id: typeof raw.id === "string" && raw.id ? raw.id : createId("ledger"),
+    name: normalizeLedgerName(raw.name, fallbackName),
+    families: defaultFamilies.map((family) => ({ ...family })),
+    familyMembers: normalizeFamilyMembers(raw.familyMembers),
+    categories,
+    expenses,
+    activeDate: expenses.length ? normalizeDate(raw.activeDate, today) : today,
+    activeCategory: normalizeCategorySelection(raw.activeCategory, categories),
+    selectedPayerId: normalizePayerId(raw.selectedPayerId),
+    ledgerFamilyFilter: normalizePayerId(raw.ledgerFamilyFilter),
+    ledgerCategoryFilter: normalizeCategoryFilter(raw.ledgerCategoryFilter, categories),
+    cloudShareToken: typeof raw.cloudShareToken === "string" ? raw.cloudShareToken : "",
+    createdAt: normalizeTimestamp(raw.createdAt),
+    updatedAt: normalizeTimestamp(raw.updatedAt),
+  };
+}
+
+function createEmptyLedger(name) {
+  const now = new Date().toISOString();
+  return {
+    id: createId("ledger"),
+    name: normalizeLedgerName(name, "旅行账本"),
     families: defaultFamilies.map((family) => ({ ...family })),
     familyMembers: normalizeFamilyMembers(),
     categories: [...defaultCategories],
     expenses: [],
-    activeDate: today,
+    activeDate: todayIso(),
     activeCategory: "",
     selectedPayerId: "",
     ledgerFamilyFilter: "",
     ledgerCategoryFilter: "",
+    cloudShareToken: "",
+    createdAt: now,
+    updatedAt: now,
   };
+}
+
+function createId(prefix) {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeLedgerName(name, fallback = "新账本") {
+  const normalized = String(name || "").trim();
+  return normalized || fallback;
+}
+
+function normalizeTimestamp(value) {
+  const date = new Date(value || Date.now());
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+}
+
+function getActiveLedger() {
+  const ledger = appState.ledgers.find((item) => item.id === appState.activeLedgerId) || appState.ledgers[0];
+  appState.activeLedgerId = ledger.id;
+  return ledger;
+}
+
+function activateLedgerFromUrl() {
+  const shareToken = new URLSearchParams(window.location.search).get("ledger") || "";
+  if (!shareToken) return;
+
+  const existingLedger = appState.ledgers.find((ledger) => ledger.cloudShareToken === shareToken);
+  if (existingLedger) {
+    appState.activeLedgerId = existingLedger.id;
+    return;
+  }
+
+  const ledger = createEmptyLedger("云账本");
+  ledger.cloudShareToken = shareToken;
+  appState.ledgers.push(ledger);
+  appState.activeLedgerId = ledger.id;
+}
+
+function replaceActiveLedger(nextLedger) {
+  const normalizedLedger = normalizeLedger(nextLedger, state?.name || "旅行账本");
+  const index = appState.ledgers.findIndex((ledger) => ledger.id === normalizedLedger.id);
+  if (index >= 0) {
+    appState.ledgers[index] = normalizedLedger;
+  } else {
+    appState.ledgers.push(normalizedLedger);
+  }
+  appState.activeLedgerId = normalizedLedger.id;
+  state = normalizedLedger;
 }
 
 function normalizeFamilies(families) {
@@ -211,7 +315,15 @@ function isValidExpense(expense) {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  state.updatedAt = new Date().toISOString();
+  const index = appState.ledgers.findIndex((ledger) => ledger.id === state.id);
+  if (index >= 0) {
+    appState.ledgers[index] = state;
+  } else {
+    appState.ledgers.push(state);
+  }
+  appState.activeLedgerId = state.id;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
 }
 
 function loadCloudState() {
@@ -225,13 +337,15 @@ function loadCloudState() {
   }
 
   return {
-    shareToken: tokenFromUrl || saved.shareToken || "",
+    shareToken: tokenFromUrl || state.cloudShareToken || saved.shareToken || "",
     lastPulledAt: "",
   };
 }
 
 function saveCloudState() {
+  state.cloudShareToken = cloudState.shareToken;
   localStorage.setItem(CLOUD_STATE_KEY, JSON.stringify({ shareToken: cloudState.shareToken }));
+  saveState();
 }
 
 function isCloudConfigured() {
@@ -297,7 +411,13 @@ async function pullCloudLedger({ announce = false } = {}) {
   updateCloudControls();
   try {
     const payload = await supabaseRpc("get_travel_ledger", { p_share_token: cloudState.shareToken });
-    state = normalizeRemotePayload(payload);
+    replaceActiveLedger({
+      ...state,
+      ...normalizeRemotePayload(payload),
+      id: state.id,
+      name: state.name,
+      cloudShareToken: cloudState.shareToken,
+    });
     cloudReady = true;
     cloudState.lastPulledAt = new Date().toISOString();
     saveCloudState();
@@ -350,7 +470,11 @@ async function syncAllLocalDataToCloud() {
 function updateLedgerUrl() {
   if (window.location.protocol === "file:") return;
   const url = new URL(window.location.href);
-  url.searchParams.set("ledger", cloudState.shareToken);
+  if (cloudState.shareToken) {
+    url.searchParams.set("ledger", cloudState.shareToken);
+  } else {
+    url.searchParams.delete("ledger");
+  }
   window.history.replaceState({}, "", url);
 }
 
@@ -558,7 +682,9 @@ function calculateSettlements(balances) {
     if (cents > 0) {
       settlements.push({
         from: debtor.family.name,
+        fromFamilyId: debtor.family.id,
         to: creditor.family.name,
+        toFamilyId: creditor.family.id,
         cents,
       });
     }
@@ -575,6 +701,7 @@ function calculateSettlements(balances) {
 
 function render(options = {}) {
   const { animateFinancialChanges = false } = options;
+  renderLedgerSwitcher();
   updateClearLedgerButton();
   updateCloudControls();
   renderFormOptions();
@@ -590,6 +717,13 @@ function render(options = {}) {
   applySubmitButtonTheme();
   updateAmountMotionState();
   saveState();
+}
+
+function renderLedgerSwitcher() {
+  elements.activeLedgerSelect.innerHTML = appState.ledgers
+    .map((ledger) => `<option value="${escapeHtml(ledger.id)}">${escapeHtml(ledger.name)}</option>`)
+    .join("");
+  elements.activeLedgerSelect.value = state.id;
 }
 
 function renderFormOptions() {
@@ -644,6 +778,25 @@ function renderCategories() {
 function renderSettings() {
   const summary = calculateSummary();
   const usedCategories = new Set(state.expenses.map((expense) => expense.category));
+  elements.currentLedgerNameInput.value = state.name;
+  elements.ledgerManagerList.innerHTML = appState.ledgers
+    .map((ledger) => {
+      const isActive = ledger.id === state.id;
+      const deleteDisabled = appState.ledgers.length <= 1 ? " disabled" : "";
+      const expenseCount = Array.isArray(ledger.expenses) ? ledger.expenses.length : 0;
+      const cloudLabel = ledger.cloudShareToken ? "云账本" : "本地";
+
+      return `
+        <div class="ledger-manager-item${isActive ? " is-active" : ""}">
+          <button class="ledger-manager-main" type="button" data-switch-ledger="${escapeHtml(ledger.id)}" ${isActive ? "aria-current=\"true\"" : ""}>
+            <span>${escapeHtml(ledger.name)}</span>
+            <small>${expenseCount} 笔 · ${cloudLabel}</small>
+          </button>
+          <button class="chip-remove-button ledger-delete-button" type="button" data-delete-ledger="${escapeHtml(ledger.id)}" aria-label="删除 ${escapeHtml(ledger.name)}"${deleteDisabled}>×</button>
+        </div>
+      `;
+    })
+    .join("");
 
   elements.settingsFamilyList.innerHTML = state.families
     .map(
@@ -757,17 +910,42 @@ function renderSummary({ animateFinancialChanges = false } = {}) {
     : `<div class="empty-state${enterClass}">暂无类别支出</div>`;
 
   elements.settlementList.innerHTML = summary.settlements.length
-    ? summary.settlements
-        .map(
-          (settlement) => `
-            <div class="settlement-item${enterClass}">
-              <span>${escapeHtml(settlement.from)} 给 ${escapeHtml(settlement.to)}</span>
-              <strong>${formatMoney(settlement.cents)}</strong>
-            </div>
-          `,
-        )
-        .join("")
-    : `<div class="empty-state${enterClass}">当前无需转账</div>`;
+    ? `
+      <div class="settlement-overview${enterClass}">
+        <span>按 ${summary.totalMembers} 人分摊，每人承担 ${formatMoney(summary.shareCents)}</span>
+        <strong>${summary.settlements.length} 笔转账完成平账</strong>
+      </div>
+      ${summary.settlements
+        .map((settlement, index) => renderSettlementItem(settlement, index, enterClass))
+        .join("")}
+    `
+    : `<div class="settlement-done${enterClass}">
+        <span class="settlement-done-icon">✓</span>
+        <strong>当前无需转账</strong>
+        <small>各家已付金额已经覆盖应承担金额。</small>
+      </div>`;
+}
+
+function renderSettlementItem(settlement, index, enterClass) {
+  return `
+    <article class="settlement-item${enterClass}" style="${familyStyle(settlement.fromFamilyId)} --settlement-target-color: ${getFamilyVisual(settlement.toFamilyId).color}; --settlement-target-text: ${getFamilyVisual(settlement.toFamilyId).text}; --settlement-delay: ${index * 58}ms;">
+      <div class="settlement-party settlement-from">
+        <span>付款</span>
+        <strong>${escapeHtml(settlement.from)}</strong>
+      </div>
+      <div class="settlement-flow" aria-hidden="true">
+        <span>→</span>
+      </div>
+      <div class="settlement-party settlement-to">
+        <span>收款</span>
+        <strong>${escapeHtml(settlement.to)}</strong>
+      </div>
+      <div class="settlement-amount">
+        <span>转账金额</span>
+        <strong>${formatMoney(settlement.cents)}</strong>
+      </div>
+    </article>
+  `;
 }
 
 function renderLedger({ animateFinancialChanges = false } = {}) {
@@ -1099,6 +1277,84 @@ function handleClearLedger() {
     },
     items.length ? Math.min(1159, 580 + items.length * 63) : 0,
   );
+}
+
+function createLedger() {
+  const name = window.prompt("新账本名称", nextLedgerName());
+  if (name === null) return;
+
+  const ledger = createEmptyLedger(name);
+  appState.ledgers.push(ledger);
+  switchLedger(ledger.id, { announce: false });
+  showToast({ message: `已创建“${ledger.name}”` });
+}
+
+function nextLedgerName() {
+  return `账本 ${appState.ledgers.length + 1}`;
+}
+
+function switchLedger(ledgerId, { announce = true } = {}) {
+  const ledger = appState.ledgers.find((item) => item.id === ledgerId);
+  if (!ledger || ledger.id === state.id) return;
+
+  state = ledger;
+  appState.activeLedgerId = ledger.id;
+  cloudState.shareToken = state.cloudShareToken || "";
+  localStorage.setItem(CLOUD_STATE_KEY, JSON.stringify({ shareToken: cloudState.shareToken }));
+  editingExpenseId = "";
+  lastAddedExpenseId = "";
+  lastAddedCategory = "";
+  totalAmountText = "";
+  elements.expenseForm.reset();
+  updateLedgerUrl();
+  render({ animateFinancialChanges: true });
+  if (announce) showToast({ message: `已切换到“${state.name}”` });
+}
+
+function renameCurrentLedger() {
+  const nextName = normalizeLedgerName(elements.currentLedgerNameInput.value, state.name);
+  if (nextName === state.name) return;
+
+  state.name = nextName;
+  render();
+  showToast({ message: "账本名称已更新" });
+}
+
+function handleLedgerManagerClick(event) {
+  const switchButton = event.target.closest("[data-switch-ledger]");
+  if (switchButton) {
+    switchLedger(switchButton.dataset.switchLedger);
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-delete-ledger]");
+  if (!deleteButton) return;
+  deleteLedger(deleteButton.dataset.deleteLedger);
+}
+
+function deleteLedger(ledgerId) {
+  if (appState.ledgers.length <= 1) return;
+
+  const ledgerIndex = appState.ledgers.findIndex((ledger) => ledger.id === ledgerId);
+  if (ledgerIndex < 0) return;
+
+  const ledger = appState.ledgers[ledgerIndex];
+  const confirmed = window.confirm(`确定删除“${ledger.name}”吗？这个操作只会删除当前浏览器里的这个账本。`);
+  if (!confirmed) return;
+
+  appState.ledgers.splice(ledgerIndex, 1);
+  if (state.id === ledgerId) {
+    const nextLedger = appState.ledgers[Math.min(ledgerIndex, appState.ledgers.length - 1)];
+    state = nextLedger;
+    appState.activeLedgerId = nextLedger.id;
+    cloudState.shareToken = state.cloudShareToken || "";
+    localStorage.setItem(CLOUD_STATE_KEY, JSON.stringify({ shareToken: cloudState.shareToken }));
+    updateLedgerUrl();
+  }
+
+  editingExpenseId = "";
+  render({ animateFinancialChanges: true });
+  showToast({ message: `已删除“${ledger.name}”` });
 }
 
 function openSettings() {
@@ -1496,11 +1752,20 @@ function escapeHtml(value) {
 }
 
 elements.expenseForm.addEventListener("submit", handleExpenseSubmit);
+elements.activeLedgerSelect.addEventListener("change", () => {
+  switchLedger(elements.activeLedgerSelect.value);
+});
+elements.createLedgerButton.addEventListener("click", createLedger);
 elements.categoryForm.addEventListener("click", (event) => {
   if (event.target.closest("button")) handleInlineCategoryAdd(event);
 });
 elements.newCategoryInput.addEventListener("keydown", handleNewCategoryKeydown);
 elements.categoryChips.addEventListener("click", handleCategorySelection);
+elements.ledgerNameForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  renameCurrentLedger();
+});
+elements.ledgerManagerList.addEventListener("click", handleLedgerManagerClick);
 elements.settingsCategoryForm.addEventListener("submit", handleSettingsCategorySubmit);
 elements.settingsCategoryChips.addEventListener("click", handleSettingsCategoryClick);
 elements.settingsFamilyList.addEventListener("click", handleFamilyMemberStep);
