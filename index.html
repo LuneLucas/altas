@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>三家庭旅游记账</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23f6f1e7'/%3E%3Ccircle cx='24' cy='26' r='13' fill='%23a9ceb5'/%3E%3Ccircle cx='40' cy='25' r='13' fill='%23b9c9e6'/%3E%3Ccircle cx='32' cy='40' r='13' fill='%23efc2bf'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=bottom-bar-20260701" />
   </head>
   <body>
     <main class="app-shell">
@@ -69,6 +69,18 @@
                   <button class="secondary-button" type="button">添加</button>
                 </div>
               </fieldset>
+
+              <section class="split-scope full-row" id="splitScope" aria-label="分摊范围">
+                <button class="split-scope-toggle" id="splitScopeToggle" type="button" aria-expanded="false" aria-controls="splitScopePanel">
+                  <span>分摊范围</span>
+                  <strong id="splitScopeSummary">全部家庭 · 按人数</strong>
+                </button>
+                <div class="split-scope-panel" id="splitScopePanel" hidden>
+                  <div class="split-mode-buttons" id="splitModeButtons" aria-label="选择分摊范围"></div>
+                  <div class="split-family-choices" id="splitFamilyChoices" aria-label="选择参与分摊的家庭"></div>
+                  <div class="split-custom-amounts" id="splitCustomAmounts" aria-label="分别填写承担金额"></div>
+                </div>
+              </section>
 
               <label class="date-label">
                 <span>日期</span>
@@ -141,14 +153,14 @@
           <div class="settings-grid">
             <section class="settings-panel">
               <div class="settings-panel-title">
-                <h3>账本管理</h3>
-                <button class="secondary-button compact-button" id="settingsCreateLedgerButton" type="button">新建账本</button>
+                <h3>当前账本</h3>
+                <button class="secondary-button compact-button" id="openLedgerManagerButton" type="button">账本管理</button>
               </div>
               <form id="ledgerNameForm" class="ledger-name-form">
                 <input id="currentLedgerNameInput" type="text" maxlength="24" placeholder="账本名称" />
                 <button class="secondary-button" id="saveLedgerNameButton" type="submit">保存名称</button>
               </form>
-              <div id="ledgerManagerList" class="ledger-manager-list"></div>
+              <div id="currentLedgerSummary" class="current-ledger-summary"></div>
             </section>
 
             <section class="settings-panel">
@@ -192,6 +204,37 @@
         </aside>
       </section>
 
+      <section class="ledger-management-view" id="ledgerManagementView" hidden aria-label="账本管理" aria-modal="true" role="dialog">
+        <button class="ledger-management-backdrop" id="ledgerManagementBackdrop" type="button" aria-label="关闭账本管理"></button>
+        <aside class="ledger-management-drawer">
+          <div class="ledger-management-hero">
+            <div>
+              <p class="eyebrow">多次旅行</p>
+              <h2>账本管理</h2>
+            </div>
+            <button class="ghost-button" id="closeLedgerManagerButton" type="button">完成</button>
+          </div>
+
+          <div class="ledger-management-tools">
+            <form id="ledgerCreateForm" class="ledger-create-form">
+              <input id="ledgerCreateNameInput" type="text" maxlength="24" placeholder="新账本名称" />
+              <label class="checkbox-option">
+                <input id="ledgerInheritSettingsInput" type="checkbox" checked />
+                <span>沿用当前人数与类别</span>
+              </label>
+              <button class="secondary-button" type="submit">新建</button>
+            </form>
+
+            <form id="ledgerJoinForm" class="ledger-join-form">
+              <input id="ledgerJoinInput" type="text" placeholder="粘贴云账本邀请链接" />
+              <button class="secondary-button" type="submit">加入</button>
+            </form>
+          </div>
+
+          <div id="ledgerManagerList" class="ledger-manager-list"></div>
+        </aside>
+      </section>
+
       <div class="mobile-submit-bar" id="mobileSubmitBar">
         <div class="mobile-submit-summary" id="mobileSubmitSummary">乐家 · 餐饮 · 今天</div>
         <button class="primary-button mobile-submit-button" id="mobileSubmitButton" type="button">
@@ -202,6 +245,6 @@
       <div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="true"></div>
     </main>
 
-    <script src="./app.js"></script>
+    <script src="./app.js?v=ledger-manager-20260701"></script>
   </body>
 </html>

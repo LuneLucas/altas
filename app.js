@@ -15,6 +15,11 @@ const familyVisuals = {
   "family-c": { color: "#c89a9a", gradient: "#efc2bf", text: "#986a6a", soft: "rgba(200, 154, 154, 0.62)", wash: "rgba(200, 154, 154, 0.17)" },
 };
 const defaultCategories = ["交通", "住宿", "餐饮", "门票", "购物", "其他"];
+const splitModeOptions = [
+  { id: "all", label: "全部家庭", description: "按人数自动分摊" },
+  { id: "families", label: "指定家庭", description: "只让选中的家庭参与" },
+  { id: "custom", label: "分别填写金额", description: "适合票价、房费、租车差异" },
+];
 const categoryVisuals = {
   "交通": { emoji: "🚄", bg: "#d9e8e2", text: "#486d62", border: "rgba(88, 126, 113, 0.28)", gradient: "#b9d8cc" },
   "住宿": { emoji: "🛏️", bg: "#dfe5f2", text: "#536782", border: "rgba(92, 112, 145, 0.26)", gradient: "#c1cde2" },
@@ -45,7 +50,6 @@ const elements = {
   ledgerView: document.querySelector("#ledgerView"),
   settingsView: document.querySelector("#settingsView"),
   currentLedgerTitle: document.querySelector("#currentLedgerTitle"),
-  settingsCreateLedgerButton: document.querySelector("#settingsCreateLedgerButton"),
   syncStatus: document.querySelector("#syncStatus"),
   createCloudLedgerButton: document.querySelector("#createCloudLedgerButton"),
   copyShareLinkButton: document.querySelector("#copyShareLinkButton"),
@@ -53,6 +57,15 @@ const elements = {
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
   settingsBackdrop: document.querySelector("#settingsBackdrop"),
   settingsClearLedgerButton: document.querySelector("#settingsClearLedgerButton"),
+  openLedgerManagerButton: document.querySelector("#openLedgerManagerButton"),
+  ledgerManagementView: document.querySelector("#ledgerManagementView"),
+  ledgerManagementBackdrop: document.querySelector("#ledgerManagementBackdrop"),
+  closeLedgerManagerButton: document.querySelector("#closeLedgerManagerButton"),
+  ledgerCreateForm: document.querySelector("#ledgerCreateForm"),
+  ledgerCreateNameInput: document.querySelector("#ledgerCreateNameInput"),
+  ledgerInheritSettingsInput: document.querySelector("#ledgerInheritSettingsInput"),
+  ledgerJoinForm: document.querySelector("#ledgerJoinForm"),
+  ledgerJoinInput: document.querySelector("#ledgerJoinInput"),
   amountLabel: document.querySelector("#amountLabel"),
   payerField: document.querySelector("#payerField"),
   familyRoster: document.querySelector("#familyRoster"),
@@ -75,11 +88,18 @@ const elements = {
   settingsCategoryForm: document.querySelector("#settingsCategoryForm"),
   settingsNewCategoryInput: document.querySelector("#settingsNewCategoryInput"),
   categoryChips: document.querySelector("#categoryChips"),
+  splitScopeToggle: document.querySelector("#splitScopeToggle"),
+  splitScopeSummary: document.querySelector("#splitScopeSummary"),
+  splitScopePanel: document.querySelector("#splitScopePanel"),
+  splitModeButtons: document.querySelector("#splitModeButtons"),
+  splitFamilyChoices: document.querySelector("#splitFamilyChoices"),
+  splitCustomAmounts: document.querySelector("#splitCustomAmounts"),
   settingsCategoryChips: document.querySelector("#settingsCategoryChips"),
   settingsFamilyList: document.querySelector("#settingsFamilyList"),
   ledgerNameForm: document.querySelector("#ledgerNameForm"),
   currentLedgerNameInput: document.querySelector("#currentLedgerNameInput"),
   saveLedgerNameButton: document.querySelector("#saveLedgerNameButton"),
+  currentLedgerSummary: document.querySelector("#currentLedgerSummary"),
   ledgerManagerList: document.querySelector("#ledgerManagerList"),
   settingsDataSummary: document.querySelector("#settingsDataSummary"),
   storageModeLabel: document.querySelector("#storageModeLabel"),
@@ -99,6 +119,10 @@ const elements = {
 let appState = loadState();
 activateLedgerFromUrl();
 let state = getActiveLedger();
+let activeSplitMode = "all";
+let activeSplitFamilyIds = state.families.map((family) => family.id);
+let activeSplitAmounts = {};
+let splitScopeOpen = false;
 let lastAddedExpenseId = "";
 let lastAddedCategory = "";
 let activatingPayerId = "";
@@ -106,6 +130,7 @@ let activatingCategory = "";
 let editingExpenseId = "";
 let toastTimer = 0;
 let settingsCloseTimer = 0;
+let ledgerManagementCloseTimer = 0;
 let ledgerSwitchTimer = 0;
 let totalAmountText = "";
 let totalAmountSwapTimer = 0;
@@ -272,6 +297,28 @@ function normalizePayerId(payerId) {
   return defaultFamilies.some((family) => family.id === payerId) ? payerId : "";
 }
 
+function normalizeSplitMode(mode) {
+  return splitModeOptions.some((option) => option.id === mode) ? mode : "all";
+}
+
+function normalizeSplitFamilyIds(familyIds = [], fallbackIds = []) {
+  const ids = Array.isArray(familyIds) ? familyIds : [];
+  const validIds = [...new Set(ids.map(normalizePayerId).filter(Boolean))];
+  const fallback = [...new Set(fallbackIds.map(normalizePayerId).filter(Boolean))];
+  return validIds.length ? validIds : fallback;
+}
+
+function normalizeSplitAmounts(amounts = {}) {
+  const source = amounts && typeof amounts === "object" ? amounts : {};
+  return Object.fromEntries(
+    defaultFamilies.map((family) => {
+      const amount = Number(source[family.id]);
+      const normalized = Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : 0;
+      return [family.id, normalized];
+    }),
+  );
+}
+
 function normalizeDate(value, fallback = todayIso()) {
   const date = String(value || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fallback;
@@ -294,6 +341,7 @@ function normalizeCategoryFilter(category, categories) {
 }
 
 function normalizeExpense(expense) {
+  const splitMode = normalizeSplitMode(expense.splitMode);
   return {
     id: expense.id,
     amount: Math.round(Number(expense.amount) * 100) / 100,
@@ -301,6 +349,9 @@ function normalizeExpense(expense) {
     category: normalizeCategory(expense.category),
     note: String(expense.note || "").trim(),
     date: normalizeDate(expense.date),
+    splitMode,
+    splitFamilyIds: normalizeSplitFamilyIds(expense.splitFamilyIds, splitMode === "families" ? defaultFamilies.map((family) => family.id) : []),
+    splitAmounts: normalizeSplitAmounts(expense.splitAmounts),
   };
 }
 
@@ -331,22 +382,16 @@ function saveState() {
 function loadCloudState() {
   const params = new URLSearchParams(window.location.search);
   const tokenFromUrl = params.get("ledger") || "";
-  let saved = {};
-  try {
-    saved = JSON.parse(localStorage.getItem(CLOUD_STATE_KEY) || "{}") || {};
-  } catch {
-    localStorage.removeItem(CLOUD_STATE_KEY);
-  }
 
   return {
-    shareToken: tokenFromUrl || state.cloudShareToken || saved.shareToken || "",
+    shareToken: tokenFromUrl || state.cloudShareToken || "",
     lastPulledAt: "",
   };
 }
 
 function saveCloudState() {
   state.cloudShareToken = cloudState.shareToken;
-  localStorage.setItem(CLOUD_STATE_KEY, JSON.stringify({ shareToken: cloudState.shareToken }));
+  localStorage.removeItem(CLOUD_STATE_KEY);
   saveState();
 }
 
@@ -385,6 +430,7 @@ function normalizeRemotePayload(payload) {
   const familyMembers = ledger.family_members && typeof ledger.family_members === "object" ? ledger.family_members : {};
 
   return {
+    name: normalizeRemoteLedgerName(ledger.name),
     families: normalizeFamilies(ledger.families || defaultFamilies),
     familyMembers: normalizeFamilyMembers(familyMembers),
     categories: normalizeCategories([...categories, ...expenses.map((expense) => expense.category)]),
@@ -396,6 +442,9 @@ function normalizeRemotePayload(payload) {
         category: normalizeCategory(expense.category),
         note: String(expense.note || "").trim(),
         date: normalizeDate(expense.expense_date),
+        splitMode: normalizeSplitMode(expense.split_mode),
+        splitFamilyIds: normalizeSplitFamilyIds(expense.split_family_ids),
+        splitAmounts: normalizeSplitAmounts(expense.split_amounts),
       }))
       .filter(isValidExpense),
     activeDate: state.activeDate || todayIso(),
@@ -404,6 +453,15 @@ function normalizeRemotePayload(payload) {
     ledgerFamilyFilter: normalizePayerId(state.ledgerFamilyFilter),
     ledgerCategoryFilter: normalizeCategoryFilter(state.ledgerCategoryFilter, categories),
   };
+}
+
+function normalizeRemoteLedgerName(name) {
+  const remoteName = normalizeLedgerName(name, state.name);
+  const legacyDefaultNames = new Set(["三家庭旅游账本", "云账本"]);
+  if (legacyDefaultNames.has(remoteName) && state.name && !legacyDefaultNames.has(state.name)) {
+    return state.name;
+  }
+  return remoteName;
 }
 
 async function pullCloudLedger({ announce = false } = {}) {
@@ -417,7 +475,6 @@ async function pullCloudLedger({ announce = false } = {}) {
       ...state,
       ...normalizeRemotePayload(payload),
       id: state.id,
-      name: state.name,
       cloudShareToken: cloudState.shareToken,
     });
     cloudReady = true;
@@ -433,6 +490,7 @@ async function pullCloudLedger({ announce = false } = {}) {
     return false;
   } finally {
     cloudBusy = false;
+    updateLedgerUrl();
     updateCloudControls();
   }
 }
@@ -472,11 +530,7 @@ async function syncAllLocalDataToCloud() {
 function updateLedgerUrl() {
   if (window.location.protocol === "file:") return;
   const url = new URL(window.location.href);
-  if (cloudState.shareToken) {
-    url.searchParams.set("ledger", cloudState.shareToken);
-  } else {
-    url.searchParams.delete("ledger");
-  }
+  url.searchParams.delete("ledger");
   window.history.replaceState({}, "", url);
 }
 
@@ -503,22 +557,40 @@ function queueCloudSettingsSync() {
   if (!isCloudLedgerActive()) return;
   window.clearTimeout(pendingSettingsSync);
   pendingSettingsSync = window.setTimeout(() => {
-    syncCloudSettingsNow();
+    syncCloudSettingsNow().catch(() => {
+      showToast({ message: "云端设置同步失败，本地已保留" });
+    });
   }, 350);
 }
 
 async function syncCloudSettingsNow() {
   if (!isCloudLedgerActive()) return;
-  await supabaseRpc("update_travel_ledger_settings", {
+  const basePayload = {
     p_share_token: cloudState.shareToken,
     p_categories: state.categories,
     p_family_members: state.familyMembers,
-  });
+  };
+  const namePayload = {
+    ...basePayload,
+    p_name: state.name,
+  };
+
+  try {
+    await supabaseRpc("update_travel_ledger_settings", namePayload);
+  } catch (error) {
+    if (!isSettingsRpcCompatibilityError(error)) throw error;
+    await supabaseRpc("update_travel_ledger_settings", basePayload);
+  }
+}
+
+function isSettingsRpcCompatibilityError(error) {
+  const message = String(error?.message || error || "");
+  return message.includes("p_name") || message.includes("schema cache") || message.includes("PGRST202");
 }
 
 async function syncCloudExpense(expense) {
   if (!isCloudLedgerActive()) return;
-  await supabaseRpc("save_travel_expense", {
+  const basePayload = {
     p_share_token: cloudState.shareToken,
     p_id: expense.id,
     p_amount: expense.amount,
@@ -526,7 +598,25 @@ async function syncCloudExpense(expense) {
     p_category: expense.category,
     p_note: expense.note,
     p_expense_date: expense.date,
-  });
+  };
+  const splitPayload = {
+    ...basePayload,
+    p_split_mode: normalizeSplitMode(expense.splitMode),
+    p_split_family_ids: normalizeSplitFamilyIds(expense.splitFamilyIds),
+    p_split_amounts: normalizeSplitAmounts(expense.splitAmounts),
+  };
+
+  try {
+    await supabaseRpc("save_travel_expense", splitPayload);
+  } catch (error) {
+    if (!isSplitRpcCompatibilityError(error)) throw error;
+    await supabaseRpc("save_travel_expense", basePayload);
+  }
+}
+
+function isSplitRpcCompatibilityError(error) {
+  const message = String(error?.message || error || "");
+  return message.includes("p_split_") || message.includes("schema cache") || message.includes("PGRST202");
 }
 
 async function deleteCloudExpense(expenseId) {
@@ -570,6 +660,19 @@ function expenseToCents(expense) {
   return Math.round(Number(expense.amount) * 100);
 }
 
+function amountToCents(amount) {
+  return Math.round(Number(amount) * 100) || 0;
+}
+
+function centsToAmount(cents) {
+  return Math.round(cents) / 100;
+}
+
+function formatAmountInput(cents) {
+  const amount = centsToAmount(cents);
+  return amount > 0 ? amount.toFixed(2).replace(/\.00$/, "") : "";
+}
+
 function getFamilyName(familyId) {
   return state.families.find((family) => family.id === familyId)?.name || "未知家庭";
 }
@@ -606,19 +709,25 @@ function stringHash(value) {
 
 function calculateSummary() {
   const paidByFamily = Object.fromEntries(state.families.map((family) => [family.id, 0]));
+  const shareByFamily = Object.fromEntries(state.families.map((family) => [family.id, 0]));
   const categoryTotals = Object.fromEntries(state.categories.map((category) => [category, 0]));
   let totalCents = 0;
+  let scopedExpenseCount = 0;
 
   for (const expense of state.expenses) {
     const cents = expenseToCents(expense);
+    const expenseShares = calculateExpenseShares(expense);
     totalCents += cents;
     paidByFamily[expense.payerId] = (paidByFamily[expense.payerId] || 0) + cents;
     categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + cents;
+    state.families.forEach((family) => {
+      shareByFamily[family.id] = (shareByFamily[family.id] || 0) + (expenseShares[family.id] || 0);
+    });
+    if (normalizeSplitMode(expense.splitMode) !== "all") scopedExpenseCount += 1;
   }
 
   const totalMembers = getTotalMembers();
   const perPersonCents = totalMembers ? Math.round(totalCents / totalMembers) : 0;
-  const shareByFamily = calculateFamilyShares(totalCents, totalMembers);
   const balances = state.families.map((family) => ({
     family,
     cents: (paidByFamily[family.id] || 0) - shareByFamily[family.id],
@@ -631,6 +740,7 @@ function calculateSummary() {
     shareByFamily,
     paidByFamily,
     categoryTotals,
+    scopedExpenseCount,
     settlements: calculateSettlements(balances),
   };
 }
@@ -639,12 +749,44 @@ function getTotalMembers() {
   return state.families.reduce((sum, family) => sum + (state.familyMembers[family.id] || 1), 0);
 }
 
-function calculateFamilyShares(totalCents, totalMembers) {
-  if (!totalMembers) {
-    return Object.fromEntries(state.families.map((family) => [family.id, 0]));
+function calculateExpenseShares(expense) {
+  const totalCents = expenseToCents(expense);
+  const emptyShares = Object.fromEntries(state.families.map((family) => [family.id, 0]));
+  const splitMode = normalizeSplitMode(expense.splitMode);
+
+  if (splitMode === "custom") {
+    const splitAmounts = normalizeSplitAmounts(expense.splitAmounts);
+    let assignedCents = 0;
+    let largestFamilyId = state.families[0]?.id || "";
+
+    for (const family of state.families) {
+      const cents = amountToCents(splitAmounts[family.id]);
+      emptyShares[family.id] = cents;
+      assignedCents += cents;
+      if (cents > emptyShares[largestFamilyId]) largestFamilyId = family.id;
+    }
+
+    if (assignedCents > 0 && largestFamilyId) {
+      emptyShares[largestFamilyId] += totalCents - assignedCents;
+      return emptyShares;
+    }
   }
 
-  const roughShares = state.families.map((family) => {
+  const allFamilyIds = state.families.map((family) => family.id);
+  const splitFamilyIds = splitMode === "families" ? normalizeSplitFamilyIds(expense.splitFamilyIds, allFamilyIds) : allFamilyIds;
+  return calculateFamilySharesForIds(totalCents, splitFamilyIds);
+}
+
+function calculateFamilySharesForIds(totalCents, familyIds) {
+  const shares = Object.fromEntries(state.families.map((family) => [family.id, 0]));
+  const selectedFamilies = normalizeSplitFamilyIds(familyIds, state.families.map((family) => family.id))
+    .map((familyId) => state.families.find((family) => family.id === familyId))
+    .filter(Boolean);
+  const totalMembers = selectedFamilies.reduce((sum, family) => sum + (state.familyMembers[family.id] || 1), 0);
+
+  if (!totalMembers || !selectedFamilies.length) return shares;
+
+  const roughShares = selectedFamilies.map((family) => {
     const members = state.familyMembers[family.id] || 1;
     const exactShare = (totalCents * members) / totalMembers;
     const cents = Math.floor(exactShare);
@@ -663,7 +805,10 @@ function calculateFamilyShares(totalCents, totalMembers) {
     remainingCents -= 1;
   }
 
-  return Object.fromEntries(roughShares.map((item) => [item.family.id, item.cents]));
+  roughShares.forEach((item) => {
+    shares[item.family.id] = item.cents;
+  });
+  return shares;
 }
 
 function calculateSettlements(balances) {
@@ -709,6 +854,7 @@ function render(options = {}) {
   renderFormOptions();
   renderFamilyRoster();
   renderCategories();
+  renderSplitScope();
   renderLedgerFilters();
   renderSummary({ animateFinancialChanges });
   renderLedger({ animateFinancialChanges });
@@ -774,31 +920,107 @@ function renderCategories() {
     .join("");
 }
 
+function renderSplitScope() {
+  ensureActiveSplitState();
+  elements.splitScopeToggle.setAttribute("aria-expanded", String(splitScopeOpen));
+  elements.splitScopeSummary.textContent = formatActiveSplitSummary();
+  elements.splitScopePanel.hidden = !splitScopeOpen;
+
+  elements.splitModeButtons.innerHTML = splitModeOptions
+    .map((option) => {
+      const selected = activeSplitMode === option.id;
+      return `
+        <button class="split-mode-button${selected ? " is-selected" : ""}" type="button" data-split-mode="${escapeHtml(option.id)}" aria-pressed="${selected}">
+          <span>${escapeHtml(option.label)}</span>
+          <small>${escapeHtml(option.description)}</small>
+        </button>
+      `;
+    })
+    .join("");
+
+  elements.splitFamilyChoices.hidden = activeSplitMode !== "families";
+  elements.splitFamilyChoices.innerHTML = state.families
+    .map((family) => {
+      const selected = activeSplitFamilyIds.includes(family.id);
+      return `
+        <button class="split-family-chip${selected ? " is-selected" : ""}" type="button" data-split-family="${escapeHtml(family.id)}" style="${familyStyle(family.id)}" aria-pressed="${selected}">
+          ${escapeHtml(family.name)}
+        </button>
+      `;
+    })
+    .join("");
+
+  elements.splitCustomAmounts.hidden = activeSplitMode !== "custom";
+  elements.splitCustomAmounts.innerHTML = `
+    ${state.families
+      .map((family) => {
+        const amount = Number(activeSplitAmounts[family.id]) || 0;
+        return `
+          <label class="split-amount-row" style="${familyStyle(family.id)}">
+            <span>${escapeHtml(family.name)}</span>
+            <input type="number" min="0" step="0.01" inputmode="decimal" data-split-amount="${escapeHtml(family.id)}" value="${amount > 0 ? escapeHtml(String(amount)) : ""}" placeholder="0.00" />
+          </label>
+        `;
+      })
+      .join("")}
+    <p class="split-total-line">${escapeHtml(formatCustomSplitTotalLine())}</p>
+  `;
+}
+
+function ensureActiveSplitState() {
+  activeSplitMode = normalizeSplitMode(activeSplitMode);
+  const fallbackIds = activeSplitMode === "families" ? [] : state.families.map((family) => family.id);
+  activeSplitFamilyIds = normalizeSplitFamilyIds(activeSplitFamilyIds, fallbackIds);
+  activeSplitAmounts = normalizeSplitAmounts(activeSplitAmounts);
+}
+
+function formatActiveSplitSummary() {
+  if (activeSplitMode === "custom") {
+    const totalCents = getActiveCustomSplitTotalCents();
+    return totalCents ? `分别填写 · ${formatMoney(totalCents)}` : "分别填写金额";
+  }
+
+  if (activeSplitMode === "families") {
+    const names = activeSplitFamilyIds.map(getFamilyName).join("、");
+    return `${names || "未选家庭"} · 按人数`;
+  }
+
+  return "全部家庭 · 按人数";
+}
+
+function formatExpenseSplitSummary(expense) {
+  const splitMode = normalizeSplitMode(expense.splitMode);
+  if (splitMode === "custom") {
+    const splitAmounts = normalizeSplitAmounts(expense.splitAmounts);
+    const parts = state.families
+      .filter((family) => amountToCents(splitAmounts[family.id]) > 0)
+      .map((family) => `${family.name} ${formatMoney(amountToCents(splitAmounts[family.id]))}`);
+    return parts.length ? parts.join(" · ") : "分别填写金额";
+  }
+
+  if (splitMode === "families") {
+    const ids = normalizeSplitFamilyIds(expense.splitFamilyIds, state.families.map((family) => family.id));
+    return `${ids.map(getFamilyName).join("、")} · 按人数`;
+  }
+
+  return "全部家庭 · 按人数";
+}
+
+function formatCustomSplitTotalLine() {
+  const totalCents = getActiveCustomSplitTotalCents();
+  return totalCents ? `当前合计 ${formatMoney(totalCents)}` : "填写后会按各家庭金额计算分摊";
+}
+
+function getActiveCustomSplitTotalCents() {
+  return state.families.reduce((sum, family) => sum + amountToCents(activeSplitAmounts[family.id]), 0);
+}
+
 function renderSettings() {
   const summary = calculateSummary();
   const usedCategories = new Set(state.expenses.map((expense) => expense.category));
   elements.currentLedgerNameInput.value = state.name;
-  elements.ledgerManagerList.innerHTML = appState.ledgers
-    .map((ledger) => {
-      const isActive = ledger.id === state.id;
-      const canDelete = appState.ledgers.length > 1;
-      const expenseCount = Array.isArray(ledger.expenses) ? ledger.expenses.length : 0;
-      const cloudLabel = ledger.cloudShareToken ? "云账本" : "本地";
-      const ledgerAction = canDelete
-        ? `<button class="ledger-delete-button" type="button" data-delete-ledger="${escapeHtml(ledger.id)}" aria-label="删除 ${escapeHtml(ledger.name)}">删除</button>`
-        : `<span class="ledger-active-badge">当前</span>`;
-
-      return `
-        <div class="ledger-manager-item${isActive ? " is-active" : ""}">
-          <button class="ledger-manager-main" type="button" data-switch-ledger="${escapeHtml(ledger.id)}" ${isActive ? "aria-current=\"true\"" : ""}>
-            <span>${escapeHtml(ledger.name)}</span>
-            <small>${expenseCount} 笔 · ${cloudLabel}</small>
-          </button>
-          ${ledgerAction}
-        </div>
-      `;
-    })
-    .join("");
+  elements.currentLedgerSummary.innerHTML = renderCurrentLedgerSummary(summary);
+  renderLedgerManager();
 
   elements.settingsFamilyList.innerHTML = state.families
     .map(
@@ -853,6 +1075,88 @@ function renderSettings() {
       <strong>${state.categories.length}</strong>
     </div>
   `;
+}
+
+function renderCurrentLedgerSummary(summary) {
+  const status = state.cloudShareToken ? "云账本" : "本地账本";
+  return `
+    <div class="current-ledger-card">
+      <div>
+        <span>${escapeHtml(status)}</span>
+        <strong>${escapeHtml(state.name)}</strong>
+      </div>
+      <small>${state.expenses.length} 笔 · ${formatMoney(summary.totalCents)} · ${summary.totalMembers} 人</small>
+    </div>
+  `;
+}
+
+function renderLedgerManager() {
+  if (!elements.ledgerManagerList) return;
+
+  elements.ledgerManagerList.innerHTML = appState.ledgers
+    .map((ledger) => renderLedgerManagerItem(ledger))
+    .join("");
+}
+
+function renderLedgerManagerItem(ledger) {
+  const summary = calculateLedgerSummary(ledger);
+  const isActive = ledger.id === state.id;
+  const canDelete = appState.ledgers.length > 1;
+  const cloudLabel = ledger.cloudShareToken ? "云账本" : "本地账本";
+  const updatedLabel = formatUpdatedAt(ledger.updatedAt || ledger.createdAt);
+  const familySummary = defaultFamilies
+    .map((family) => `${family.name}${ledger.familyMembers?.[family.id] || 1}`)
+    .join(" · ");
+  const copyButton = ledger.cloudShareToken
+    ? `<button class="secondary-button compact-button" type="button" data-copy-ledger="${escapeHtml(ledger.id)}">复制邀请链接</button>`
+    : "";
+  const deleteButton = canDelete
+    ? `<button class="ledger-delete-button" type="button" data-delete-ledger="${escapeHtml(ledger.id)}" aria-label="删除 ${escapeHtml(ledger.name)}">删除</button>`
+    : `<span class="ledger-active-badge">保留</span>`;
+
+  return `
+    <article class="ledger-manager-card${isActive ? " is-active" : ""}">
+      <div class="ledger-card-main">
+        <div>
+          <span class="ledger-card-status">${escapeHtml(cloudLabel)}</span>
+          <h3>${escapeHtml(ledger.name)}</h3>
+        </div>
+        ${isActive ? `<span class="ledger-active-badge">当前</span>` : ""}
+      </div>
+      <div class="ledger-card-stats">
+        <div><span>总支出</span><strong>${formatMoney(summary.totalCents)}</strong></div>
+        <div><span>账单</span><strong>${summary.expenseCount}</strong></div>
+        <div><span>更新</span><strong>${escapeHtml(updatedLabel)}</strong></div>
+      </div>
+      <p class="ledger-card-meta">${escapeHtml(familySummary)} · ${summary.categoryCount} 个类别</p>
+      <div class="ledger-card-actions">
+        <button class="primary-button compact-ledger-action" type="button" data-switch-ledger="${escapeHtml(ledger.id)}" ${isActive ? "disabled" : ""}>${isActive ? "已打开" : "打开"}</button>
+        ${copyButton}
+        ${deleteButton}
+      </div>
+    </article>
+  `;
+}
+
+function calculateLedgerSummary(ledger) {
+  const expenses = Array.isArray(ledger.expenses) ? ledger.expenses : [];
+  return {
+    expenseCount: expenses.length,
+    totalCents: expenses.reduce((sum, expense) => sum + expenseToCents(expense), 0),
+    categoryCount: Array.isArray(ledger.categories) ? ledger.categories.length : defaultCategories.length,
+  };
+}
+
+function formatUpdatedAt(value) {
+  const date = new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return "刚刚";
+  const now = new Date();
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(date);
 }
 
 function renderTotalAmount(nextText, shouldAnimate) {
@@ -914,7 +1218,7 @@ function renderSummary({ animateFinancialChanges = false } = {}) {
   elements.settlementList.innerHTML = summary.settlements.length
     ? `
       <div class="settlement-overview${enterClass}">
-        <span>按 ${summary.totalMembers} 人分摊，每人承担 ${formatMoney(summary.shareCents)}</span>
+        <span>${escapeHtml(formatSettlementOverview(summary))}</span>
         <strong>${summary.settlements.length} 笔转账完成平账</strong>
       </div>
       ${summary.settlements
@@ -926,6 +1230,14 @@ function renderSummary({ animateFinancialChanges = false } = {}) {
         <strong>当前无需转账</strong>
         <small>各家已付金额已经覆盖应承担金额。</small>
       </div>`;
+}
+
+function formatSettlementOverview(summary) {
+  if (summary.scopedExpenseCount > 0) {
+    return `已按每笔账的分摊范围计算，${summary.scopedExpenseCount} 笔不是全员分摊`;
+  }
+
+  return `按 ${summary.totalMembers} 人分摊，每人承担 ${formatMoney(summary.shareCents)}`;
 }
 
 function renderSettlementItem(settlement, index, enterClass) {
@@ -985,6 +1297,7 @@ function renderLedger({ animateFinancialChanges = false } = {}) {
                         <span class="category-pill" style="${categoryStyle(expense.category)}">${escapeHtml(formatCategoryLabel(expense.category))}</span>
                       </div>
                       <p class="ledger-note">${escapeHtml(expense.note || "无备注")}</p>
+                      <small class="ledger-scope">${escapeHtml(formatExpenseSplitSummary(expense))}</small>
                     </div>
                     <strong class="ledger-amount">${formatMoney(expenseToCents(expense))}</strong>
                     <button class="delete-button" type="button" data-delete-id="${escapeHtml(expense.id)}" aria-label="删除这笔账">×</button>
@@ -1038,8 +1351,42 @@ function renderMobileSubmitBar() {
   const category = state.activeCategory ? formatCategoryLabel(state.activeCategory) : "未选类别";
   const date = state.activeDate === todayIso() ? "今天" : state.activeDate.slice(5);
   const action = editingExpenseId ? "保存修改" : "添加账单";
-  elements.mobileSubmitSummary.textContent = `${family} · ${category} · ${date}`;
+  const split = activeSplitMode === "all" ? "" : ` · ${formatActiveSplitSummary()}`;
+  elements.mobileSubmitSummary.textContent = `${family} · ${category} · ${date}${split}`;
   elements.mobileSubmitButton.querySelector(".button-label").textContent = action;
+}
+
+function getSplitDetailsForSubmit() {
+  ensureActiveSplitState();
+
+  if (activeSplitMode === "custom") {
+    const totalCents = getActiveCustomSplitTotalCents();
+    return {
+      amount: centsToAmount(totalCents),
+      splitMode: "custom",
+      splitFamilyIds: [],
+      splitAmounts: normalizeSplitAmounts(activeSplitAmounts),
+      error: totalCents > 0 ? "" : "请至少填写一个家庭的承担金额。",
+    };
+  }
+
+  if (activeSplitMode === "families") {
+    return {
+      amount: Number(elements.amountInput.value),
+      splitMode: "families",
+      splitFamilyIds: [...activeSplitFamilyIds],
+      splitAmounts: normalizeSplitAmounts(),
+      error: activeSplitFamilyIds.length ? "" : "请选择参与分摊的家庭。",
+    };
+  }
+
+  return {
+    amount: Number(elements.amountInput.value),
+    splitMode: "all",
+    splitFamilyIds: [],
+    splitAmounts: normalizeSplitAmounts(),
+    error: "",
+  };
 }
 
 function handleExpenseSubmit(event) {
@@ -1047,11 +1394,18 @@ function handleExpenseSubmit(event) {
   elements.formError.textContent = "";
   elements.payerError.textContent = "";
 
-  const amount = Number(elements.amountInput.value);
+  const splitDetails = getSplitDetailsForSubmit();
+  const amount = splitDetails.amount;
   const payerId = state.selectedPayerId;
   const category = elements.categoryInput.value;
   const date = normalizeDate(elements.dateInput.value, state.activeDate);
   const note = elements.noteInput.value.trim();
+
+  if (splitDetails.error) {
+    elements.formError.textContent = splitDetails.error;
+    elements.splitScopeToggle.focus();
+    return;
+  }
 
   if (!Number.isFinite(amount) || amount <= 0) {
     elements.formError.textContent = "请输入大于 0 的有效金额。";
@@ -1079,6 +1433,9 @@ function handleExpenseSubmit(event) {
     category,
     note,
     date,
+    splitMode: splitDetails.splitMode,
+    splitFamilyIds: splitDetails.splitFamilyIds,
+    splitAmounts: splitDetails.splitAmounts,
   };
 
   if (editingExpenseId) {
@@ -1096,6 +1453,7 @@ function handleExpenseSubmit(event) {
   state.selectedPayerId = payerId;
 
   elements.expenseForm.reset();
+  resetSplitScope();
   render({ animateFinancialChanges: true });
   syncCloudExpense(savedExpense).catch(() => {
     showToast({ message: "云端保存失败，本地已保留" });
@@ -1151,6 +1509,75 @@ function handleCategorySelection(event) {
   renderCategories();
   renderMobileSubmitBar();
   saveState();
+}
+
+function handleSplitScopeToggle() {
+  splitScopeOpen = !splitScopeOpen;
+  renderSplitScope();
+}
+
+function handleSplitScopeClick(event) {
+  const modeButton = event.target.closest("[data-split-mode]");
+  if (modeButton) {
+    const nextMode = normalizeSplitMode(modeButton.dataset.splitMode);
+    if (nextMode !== activeSplitMode) {
+      activeSplitMode = nextMode;
+      if (activeSplitMode === "families" && !activeSplitFamilyIds.length) {
+        activeSplitFamilyIds = state.families.map((family) => family.id);
+      }
+    }
+    renderSplitScope();
+    renderMobileSubmitBar();
+    return;
+  }
+
+  const familyButton = event.target.closest("[data-split-family]");
+  if (!familyButton) return;
+
+  const familyId = normalizePayerId(familyButton.dataset.splitFamily);
+  if (!familyId) return;
+  if (activeSplitFamilyIds.includes(familyId)) {
+    activeSplitFamilyIds = activeSplitFamilyIds.filter((id) => id !== familyId);
+  } else {
+    activeSplitFamilyIds = [...activeSplitFamilyIds, familyId];
+  }
+  renderSplitScope();
+  renderMobileSubmitBar();
+}
+
+function handleSplitAmountInput(event) {
+  const input = event.target.closest("[data-split-amount]");
+  if (!input) return;
+
+  const familyId = normalizePayerId(input.dataset.splitAmount);
+  if (!familyId) return;
+  const amount = Number(input.value);
+  activeSplitAmounts[familyId] = Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : 0;
+
+  const totalCents = getActiveCustomSplitTotalCents();
+  if (totalCents > 0) {
+    elements.amountInput.value = formatAmountInput(totalCents);
+  }
+
+  elements.splitScopeSummary.textContent = formatActiveSplitSummary();
+  const totalLine = elements.splitCustomAmounts.querySelector(".split-total-line");
+  if (totalLine) totalLine.textContent = formatCustomSplitTotalLine();
+  renderMobileSubmitBar();
+  updateAmountMotionState();
+}
+
+function resetSplitScope() {
+  activeSplitMode = "all";
+  activeSplitFamilyIds = state.families.map((family) => family.id);
+  activeSplitAmounts = {};
+  splitScopeOpen = false;
+}
+
+function setSplitScopeFromExpense(expense) {
+  activeSplitMode = normalizeSplitMode(expense.splitMode);
+  activeSplitFamilyIds = normalizeSplitFamilyIds(expense.splitFamilyIds, state.families.map((family) => family.id));
+  activeSplitAmounts = normalizeSplitAmounts(expense.splitAmounts);
+  splitScopeOpen = activeSplitMode !== "all";
 }
 
 function handleSettingsCategoryClick(event) {
@@ -1285,9 +1712,29 @@ function createLedger() {
   const name = window.prompt("新账本名称", nextLedgerName());
   if (name === null) return;
 
+  createLedgerWithOptions({ name, inheritSettings: false });
+}
+
+function handleLedgerCreateSubmit(event) {
+  event.preventDefault();
+  const name = elements.ledgerCreateNameInput.value.trim() || nextLedgerName();
+  const inheritSettings = elements.ledgerInheritSettingsInput.checked;
+  createLedgerWithOptions({ name, inheritSettings });
+  elements.ledgerCreateForm.reset();
+  elements.ledgerInheritSettingsInput.checked = true;
+}
+
+function createLedgerWithOptions({ name, inheritSettings = true }) {
   const ledger = createEmptyLedger(name);
+  if (inheritSettings) {
+    ledger.familyMembers = normalizeFamilyMembers(state.familyMembers);
+    ledger.categories = normalizeCategories(state.categories);
+    ledger.activeCategory = normalizeCategorySelection(state.activeCategory, ledger.categories);
+  }
+
   appState.ledgers.push(ledger);
   switchLedger(ledger.id, { announce: false });
+  renderLedgerManager();
   showToast({ message: `已创建“${ledger.name}”` });
 }
 
@@ -1302,12 +1749,13 @@ function switchLedger(ledgerId, { announce = true } = {}) {
   state = ledger;
   appState.activeLedgerId = ledger.id;
   cloudState.shareToken = state.cloudShareToken || "";
-  localStorage.setItem(CLOUD_STATE_KEY, JSON.stringify({ shareToken: cloudState.shareToken }));
+  localStorage.removeItem(CLOUD_STATE_KEY);
   editingExpenseId = "";
   lastAddedExpenseId = "";
   lastAddedCategory = "";
   totalAmountText = "";
   elements.expenseForm.reset();
+  resetSplitScope();
   updateLedgerUrl();
   render({ animateFinancialChanges: true });
   markLedgerSwitching();
@@ -1320,10 +1768,17 @@ function renameCurrentLedger() {
 
   state.name = nextName;
   render();
+  queueCloudSettingsSync();
   showToast({ message: "账本名称已更新" });
 }
 
 function handleLedgerManagerClick(event) {
+  const copyButton = event.target.closest("[data-copy-ledger]");
+  if (copyButton) {
+    copyLedgerShareLink(copyButton.dataset.copyLedger);
+    return;
+  }
+
   const switchButton = event.target.closest("[data-switch-ledger]");
   if (switchButton) {
     switchLedger(switchButton.dataset.switchLedger);
@@ -1333,6 +1788,58 @@ function handleLedgerManagerClick(event) {
   const deleteButton = event.target.closest("[data-delete-ledger]");
   if (!deleteButton) return;
   deleteLedger(deleteButton.dataset.deleteLedger);
+}
+
+async function copyLedgerShareLink(ledgerId) {
+  const ledger = appState.ledgers.find((item) => item.id === ledgerId);
+  if (!ledger?.cloudShareToken) return;
+  const url = getShareUrl();
+  if (!url) {
+    showToast({ message: "先发布到网页地址，再复制邀请链接" });
+    return;
+  }
+
+  url.searchParams.set("ledger", ledger.cloudShareToken);
+  await navigator.clipboard.writeText(url.toString());
+  showToast({ message: "邀请链接已复制" });
+}
+
+function handleLedgerJoinSubmit(event) {
+  event.preventDefault();
+  const token = extractShareToken(elements.ledgerJoinInput.value);
+  if (!token) {
+    showToast({ message: "没有识别到云账本链接" });
+    elements.ledgerJoinInput.focus();
+    return;
+  }
+
+  joinCloudLedger(token);
+  elements.ledgerJoinForm.reset();
+}
+
+function extractShareToken(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw).searchParams.get("ledger") || "";
+  } catch {
+    return raw.replace(/^ledger=/, "").trim();
+  }
+}
+
+function joinCloudLedger(shareToken) {
+  const existingLedger = appState.ledgers.find((ledger) => ledger.cloudShareToken === shareToken);
+  if (existingLedger) {
+    switchLedger(existingLedger.id);
+    showToast({ message: `已打开“${existingLedger.name}”` });
+    return;
+  }
+
+  const ledger = createEmptyLedger("云账本");
+  ledger.cloudShareToken = shareToken;
+  appState.ledgers.push(ledger);
+  switchLedger(ledger.id, { announce: false });
+  pullCloudLedger({ announce: true });
 }
 
 function deleteLedger(ledgerId) {
@@ -1351,7 +1858,7 @@ function deleteLedger(ledgerId) {
     state = nextLedger;
     appState.activeLedgerId = nextLedger.id;
     cloudState.shareToken = state.cloudShareToken || "";
-    localStorage.setItem(CLOUD_STATE_KEY, JSON.stringify({ shareToken: cloudState.shareToken }));
+    localStorage.removeItem(CLOUD_STATE_KEY);
     updateLedgerUrl();
   }
 
@@ -1381,6 +1888,30 @@ function closeSettings() {
     elements.settingsView.classList.remove("is-closing");
     document.body.classList.remove("settings-open");
     elements.openSettingsButton.focus();
+  }, delay);
+}
+
+function openLedgerManager() {
+  window.clearTimeout(ledgerManagementCloseTimer);
+  elements.ledgerManagementView.hidden = false;
+  elements.ledgerManagementView.classList.remove("is-closing");
+  document.body.classList.add("ledger-management-open");
+  renderLedgerManager();
+  elements.closeLedgerManagerButton.focus();
+}
+
+function closeLedgerManager() {
+  if (elements.ledgerManagementView.hidden || elements.ledgerManagementView.classList.contains("is-closing")) return;
+
+  elements.ledgerManagementView.classList.add("is-closing");
+  const delay = prefersReducedMotion() ? 0 : getCssDurationMs("--motion", 534) + 60;
+
+  window.clearTimeout(ledgerManagementCloseTimer);
+  ledgerManagementCloseTimer = window.setTimeout(() => {
+    elements.ledgerManagementView.hidden = true;
+    elements.ledgerManagementView.classList.remove("is-closing");
+    document.body.classList.remove("ledger-management-open");
+    elements.openLedgerManagerButton.focus();
   }, delay);
 }
 
@@ -1661,6 +2192,7 @@ function startEditExpense(expenseId) {
   state.selectedPayerId = expense.payerId;
   state.activeCategory = expense.category;
   state.activeDate = expense.date;
+  setSplitScopeFromExpense(expense);
   render();
   elements.amountInput.value = String(expense.amount);
   elements.noteInput.value = expense.note;
@@ -1672,6 +2204,7 @@ function startEditExpense(expenseId) {
 function cancelEdit() {
   editingExpenseId = "";
   elements.expenseForm.reset();
+  resetSplitScope();
   render();
   elements.amountInput.focus();
 }
@@ -1779,16 +2312,23 @@ function escapeHtml(value) {
 }
 
 elements.expenseForm.addEventListener("submit", handleExpenseSubmit);
-elements.settingsCreateLedgerButton.addEventListener("click", createLedger);
 elements.categoryForm.addEventListener("click", (event) => {
   if (event.target.closest("button")) handleInlineCategoryAdd(event);
 });
 elements.newCategoryInput.addEventListener("keydown", handleNewCategoryKeydown);
 elements.categoryChips.addEventListener("click", handleCategorySelection);
+elements.splitScopeToggle.addEventListener("click", handleSplitScopeToggle);
+elements.splitScopePanel.addEventListener("click", handleSplitScopeClick);
+elements.splitScopePanel.addEventListener("input", handleSplitAmountInput);
 elements.ledgerNameForm.addEventListener("submit", (event) => {
   event.preventDefault();
   renameCurrentLedger();
 });
+elements.openLedgerManagerButton.addEventListener("click", openLedgerManager);
+elements.closeLedgerManagerButton.addEventListener("click", closeLedgerManager);
+elements.ledgerManagementBackdrop.addEventListener("click", closeLedgerManager);
+elements.ledgerCreateForm.addEventListener("submit", handleLedgerCreateSubmit);
+elements.ledgerJoinForm.addEventListener("submit", handleLedgerJoinSubmit);
 elements.ledgerManagerList.addEventListener("click", handleLedgerManagerClick);
 elements.settingsCategoryForm.addEventListener("submit", handleSettingsCategorySubmit);
 elements.settingsCategoryChips.addEventListener("click", handleSettingsCategoryClick);
@@ -1832,7 +2372,12 @@ elements.ledgerCategoryFilter.addEventListener("change", () => {
   render();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !elements.settingsView.hidden) {
+  if (event.key !== "Escape") return;
+  if (!elements.ledgerManagementView.hidden) {
+    closeLedgerManager();
+    return;
+  }
+  if (!elements.settingsView.hidden) {
     closeSettings();
   }
 });
