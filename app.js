@@ -44,7 +44,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const elements = {
   ledgerView: document.querySelector("#ledgerView"),
   settingsView: document.querySelector("#settingsView"),
-  currentLedgerLabel: document.querySelector("#currentLedgerLabel"),
+  currentLedgerTitle: document.querySelector("#currentLedgerTitle"),
   settingsCreateLedgerButton: document.querySelector("#settingsCreateLedgerButton"),
   syncStatus: document.querySelector("#syncStatus"),
   createCloudLedgerButton: document.querySelector("#createCloudLedgerButton"),
@@ -722,7 +722,7 @@ function render(options = {}) {
 }
 
 function renderCurrentLedgerLabel() {
-  elements.currentLedgerLabel.textContent = `当前账本：${state.name}`;
+  elements.currentLedgerTitle.textContent = state.name;
 }
 
 function renderFormOptions() {
@@ -781,9 +781,12 @@ function renderSettings() {
   elements.ledgerManagerList.innerHTML = appState.ledgers
     .map((ledger) => {
       const isActive = ledger.id === state.id;
-      const deleteDisabled = appState.ledgers.length <= 1 ? " disabled" : "";
+      const canDelete = appState.ledgers.length > 1;
       const expenseCount = Array.isArray(ledger.expenses) ? ledger.expenses.length : 0;
       const cloudLabel = ledger.cloudShareToken ? "云账本" : "本地";
+      const ledgerAction = canDelete
+        ? `<button class="ledger-delete-button" type="button" data-delete-ledger="${escapeHtml(ledger.id)}" aria-label="删除 ${escapeHtml(ledger.name)}">删除</button>`
+        : `<span class="ledger-active-badge">当前</span>`;
 
       return `
         <div class="ledger-manager-item${isActive ? " is-active" : ""}">
@@ -791,7 +794,7 @@ function renderSettings() {
             <span>${escapeHtml(ledger.name)}</span>
             <small>${expenseCount} 笔 · ${cloudLabel}</small>
           </button>
-          <button class="chip-remove-button ledger-delete-button" type="button" data-delete-ledger="${escapeHtml(ledger.id)}" aria-label="删除 ${escapeHtml(ledger.name)}"${deleteDisabled}>×</button>
+          ${ledgerAction}
         </div>
       `;
     })
