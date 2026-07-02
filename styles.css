@@ -100,7 +100,6 @@
   --control-radius-compact: 14px;
   --control-radius-large: 20px;
   --control-padding-x: 14px;
-  --blur: blur(22px) saturate(108%);
   --spring: cubic-bezier(0.14, 0.98, 0.12, 1);
   --snap: cubic-bezier(0.18, 0.84, 0.2, 1);
   --settle: cubic-bezier(0.16, 0.9, 0.14, 1);
@@ -313,10 +312,9 @@ h3 {
 .settlement-block,
 .ledger-item {
   border: 1px solid var(--line);
-  background: var(--surface);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  box-shadow: var(--shadow);
+  /* 静态面板用实底：玻璃材质只留给悬浮层（提交栏 / toast / 遮罩） */
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 14px 44px rgba(22, 26, 30, 0.07);
 }
 
 .metric {
@@ -1493,12 +1491,10 @@ input[type="date"]:focus {
 
 .ghost-button {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.46);
+  background: rgba(255, 255, 255, 0.62);
   color: var(--ink);
   padding: 0 18px;
   white-space: nowrap;
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
   box-shadow: 0 10px 26px rgba(22, 26, 30, 0.08);
   transition:
     transform var(--motion-fast) var(--spring),
@@ -1562,12 +1558,18 @@ input[type="date"]:focus {
   display: none;
 }
 
+/* 遮罩是真正悬浮在滚动内容之上的层，玻璃只留在这里与提交栏/toast */
+.settings-backdrop,
+.ledger-management-backdrop,
+.confirm-backdrop {
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+
 .settings-backdrop {
   min-height: 100%;
   border: 0;
   background: rgba(22, 26, 30, 0.18);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   animation: settings-backdrop-enter var(--motion-fast) var(--settle) both;
 }
 
@@ -1575,8 +1577,6 @@ input[type="date"]:focus {
   min-height: 100%;
   border: 0;
   background: rgba(22, 26, 30, 0.20);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
   animation: settings-backdrop-enter var(--motion-fast) var(--settle) both;
 }
 
@@ -1586,8 +1586,6 @@ input[type="date"]:focus {
   min-height: 100%;
   border: 0;
   background: rgba(22, 26, 30, 0.22);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   animation: settings-backdrop-enter var(--motion-fast) var(--settle) both;
 }
 
@@ -1688,10 +1686,9 @@ body.ledger-management-open .mobile-submit-bar {
 .ledger-management-tools,
 .ledger-manager-card {
   border: 1px solid var(--line);
-  background: var(--surface);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  box-shadow: var(--shadow);
+  /* 抽屉内面板坐在近实底抽屉上，玻璃不可见，改实底省性能 */
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 14px 44px rgba(22, 26, 30, 0.07);
 }
 
 .settings-hero,
@@ -3916,8 +3913,8 @@ body.ledger-management-open .mobile-submit-bar {
       inset 0 -1px 1px rgba(22, 26, 30, 0.06),
       0 0 42px -24px color-mix(in srgb, var(--submit-color, var(--green)) 60%, transparent),
       0 24px 72px rgba(22, 26, 30, 0.16);
-    backdrop-filter: blur(5px) saturate(185%) brightness(1.08);
-    -webkit-backdrop-filter: blur(5px) saturate(185%) brightness(1.08);
+    backdrop-filter: blur(14px) saturate(185%) brightness(1.08);
+    -webkit-backdrop-filter: blur(14px) saturate(185%) brightness(1.08);
   }
 
   .mobile-submit-bar::before,
@@ -3973,7 +3970,11 @@ body.ledger-management-open .mobile-submit-bar {
 
   .mobile-submit-summary {
     overflow: hidden;
+    /* 局部浅底：深色列表内容滚过玻璃时保住文字对比度 */
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.55);
     color: var(--muted);
+    padding: 6px 10px;
     font-size: 0.82rem;
     font-weight: 700;
     line-height: 1.25;
@@ -4434,6 +4435,24 @@ body.ledger-management-open .mobile-submit-bar {
 
   .selectable-category-chip.is-selected:active {
     transform: translateY(-1px);
+  }
+}
+
+/* 老 WebView 不支持 backdrop-filter：玻璃层回退为实底 + 普通投影 */
+@supports not (backdrop-filter: blur(1px)) {
+  .mobile-submit-bar {
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 14px 44px rgba(22, 26, 30, 0.14);
+  }
+
+  .toast {
+    background: rgba(22, 26, 30, 0.92);
+  }
+
+  .settings-backdrop,
+  .ledger-management-backdrop,
+  .confirm-backdrop {
+    background: rgba(22, 26, 30, 0.34);
   }
 }
 
