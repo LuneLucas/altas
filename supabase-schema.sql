@@ -159,6 +159,18 @@ begin
     raise exception 'Ledger not found' using errcode = 'P0002';
   end if;
 
+  if not (ledger_row.families @> jsonb_build_array(jsonb_build_object('id', p_payer_id))) then
+    raise exception 'Unknown payer' using errcode = '23503';
+  end if;
+
+  if exists (
+    select 1
+    from unnest(coalesce(p_split_family_ids, array[]::text[])) as split_family(family_id)
+    where not (ledger_row.families @> jsonb_build_array(jsonb_build_object('id', split_family.family_id)))
+  ) then
+    raise exception 'Unknown split family' using errcode = '23503';
+  end if;
+
   insert into public.travel_expenses (
     id, ledger_id, amount, payer_id, category, note, expense_date, split_mode, split_family_ids, split_amounts, updated_at
   ) values (
@@ -186,6 +198,10 @@ begin
     updated_at = now()
   where public.travel_expenses.ledger_id = ledger_row.id
   returning * into expense_row;
+
+  if expense_row.id is null then
+    raise exception 'Expense id conflict' using errcode = '23505';
+  end if;
 
   update public.travel_ledgers set updated_at = now() where id = ledger_row.id;
 
@@ -260,12 +276,7 @@ begin
   end if;
 
   delete from public.travel_expenses where ledger_id = ledger_row.id;
-  update public.travel_ledgers
-  set
-    categories = array['交通','住宿','餐饮','门票','购物','其他'],
-    family_members = '{"family-a":1,"family-b":1,"family-c":1}'::jsonb,
-    updated_at = now()
-  where id = ledger_row.id;
+  update public.travel_ledgers set updated_at = now() where id = ledger_row.id;
 end;
 $$;
 

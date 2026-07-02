@@ -4,9 +4,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
     <title>三家庭旅游记账</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23f7f9f8'/%3E%3Ccircle cx='24' cy='26' r='13' fill='%23a9ceb5'/%3E%3Ccircle cx='40' cy='25' r='13' fill='%23b9c9e6'/%3E%3Ccircle cx='32' cy='40' r='13' fill='%23efc2bf'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=neutral-glass-20260702" />
+    <!-- 手动缓存戳：GitHub Pages 上线后如果样式没刷新，更新这里的 v 值。 -->
+    <link rel="stylesheet" href="./styles.css?v=cloud-edit-filters-20260702" />
   </head>
   <body>
     <main class="app-shell">
@@ -17,8 +19,6 @@
         </div>
         <div class="header-actions">
           <span class="sync-status" id="syncStatus">本地账本</span>
-          <button class="ghost-button" id="createCloudLedgerButton" type="button">创建云账本</button>
-          <button class="ghost-button" id="copyShareLinkButton" type="button" hidden>复制邀请链接</button>
           <button class="ghost-button" id="openSettingsButton" type="button">设置</button>
         </div>
       </header>
@@ -56,7 +56,7 @@
                 <span>金额</span>
                 <span class="amount-field">
                   <span class="currency-mark">¥</span>
-                  <input id="amountInput" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" />
+                  <input id="amountInput" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" />
                 </span>
               </label>
 
@@ -129,10 +129,14 @@
 
         <section class="ledger-section" aria-label="账单列表">
           <div class="section-heading">
-            <h2>账单列表</h2>
+            <div class="ledger-heading-copy">
+              <h2>账单列表</h2>
+              <span class="ledger-filter-summary" id="ledgerFilterSummary" hidden></span>
+            </div>
             <div class="ledger-controls" aria-label="账单筛选">
               <select id="ledgerFamilyFilter" aria-label="按家庭筛选"></select>
               <select id="ledgerCategoryFilter" aria-label="按类别筛选"></select>
+              <button class="secondary-button compact-button" id="clearLedgerFiltersButton" type="button" hidden>清除筛选</button>
             </div>
           </div>
           <div id="ledgerList" class="ledger-list"></div>
@@ -198,6 +202,12 @@
             <section class="settings-panel">
               <h3>数据状态</h3>
               <div id="settingsDataSummary" class="settings-data-summary"></div>
+              <div class="settings-action-stack">
+                <button class="secondary-button" id="createCloudLedgerButton" type="button">创建云账本</button>
+                <button class="secondary-button" id="copyShareLinkButton" type="button" hidden>复制邀请链接</button>
+                <button class="secondary-button" id="exportCsvButton" type="button">导出 CSV</button>
+                <button class="secondary-button" id="exportJsonButton" type="button">备份 JSON</button>
+              </div>
               <button class="ghost-button danger settings-clear-button" id="settingsClearLedgerButton" type="button">清空账本</button>
             </section>
           </div>
@@ -242,9 +252,25 @@
         </button>
       </div>
 
+      <section class="confirm-view" id="confirmView" hidden aria-label="确认操作" aria-modal="true" role="dialog">
+        <button class="confirm-backdrop" id="confirmBackdrop" type="button" aria-label="取消"></button>
+        <div class="confirm-dialog" role="document">
+          <div>
+            <p class="eyebrow" id="confirmEyebrow">请确认</p>
+            <h2 id="confirmTitle">确认操作</h2>
+          </div>
+          <p id="confirmMessage" class="confirm-message"></p>
+          <div class="confirm-actions">
+            <button class="secondary-button" id="confirmCancelButton" type="button">取消</button>
+            <button class="primary-button danger-action" id="confirmOkButton" type="button">确认</button>
+          </div>
+        </div>
+      </section>
+
       <div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="true"></div>
     </main>
 
-    <script src="./app.js?v=total-clean-ink-20260702"></script>
+    <!-- 手动缓存戳：发布后改了 JS 但浏览器仍用旧文件时，更新这里的 v 值。 -->
+    <script src="./app.js?v=cloud-edit-filters-20260702"></script>
   </body>
 </html>
