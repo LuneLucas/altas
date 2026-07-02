@@ -30,6 +30,8 @@ const familyVisuals = {
   "family-c": { color: "#c89a9a", gradient: "#efc2bf", text: "#8a5d5d", soft: "rgba(200, 154, 154, 0.62)", wash: "rgba(200, 154, 154, 0.17)" },
 };
 const defaultCategories = ["交通", "住宿", "餐饮", "门票", "购物", "其他"];
+// 空状态插画：复用 favicon 的三个交叠圆母题（三家庭色，低饱和）
+const emptyStateArt = `<svg class="empty-state-art" viewBox="0 0 96 64" aria-hidden="true" focusable="false"><circle cx="38" cy="26" r="17" fill="#a9ceb5" opacity="0.6"/><circle cx="58" cy="25" r="17" fill="#b9c9e6" opacity="0.6"/><circle cx="48" cy="39" r="17" fill="#efc2bf" opacity="0.55"/></svg>`;
 const splitModeOptions = [
   { id: "all", label: "全部家庭", description: "按人数自动分摊" },
   { id: "families", label: "指定家庭", description: "只让选中的家庭参与" },
@@ -1412,7 +1414,7 @@ function renderSummary({ animateFinancialChanges = false } = {}) {
           `,
         )
         .join("")
-    : `<div class="empty-state${enterClass}">暂无类别支出</div>`;
+    : `<div class="empty-state${enterClass}">${emptyStateArt}暂无类别支出<br><small>添加账单后按类别自动汇总。</small></div>`;
 
   elements.settlementList.innerHTML = summary.settlements.length
     ? `
@@ -1425,7 +1427,7 @@ function renderSummary({ animateFinancialChanges = false } = {}) {
         .join("")}
     `
     : `<div class="settlement-done${enterClass}">
-        <span class="settlement-done-icon">✓</span>
+        ${emptyStateArt}
         <strong>当前无需转账</strong>
         <small>各家已付金额已经覆盖应承担金额。</small>
       </div>`;
@@ -1466,7 +1468,7 @@ function renderLedger({ animateFinancialChanges = false } = {}) {
   const enterClass = animateFinancialChanges ? " is-entering" : "";
 
   if (!state.expenses.length) {
-    elements.ledgerList.innerHTML = `<div class="empty-state${enterClass}">还没有账单<br><small>记下第一笔，立刻看到分摊和平账。</small></div>`;
+    elements.ledgerList.innerHTML = `<div class="empty-state${enterClass}">${emptyStateArt}还没有账单<br><small>记下第一笔，开始这次旅行。</small></div>`;
     return;
   }
 

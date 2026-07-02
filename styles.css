@@ -116,6 +116,8 @@
   --amount-motion: 580ms;
   --family-focus-motion: 713ms;
   --number-swap-motion: 980ms;
+  /* 统一 focus-visible 光环：强调绿低透明 */
+  --focus-ring: 0 0 0 4px rgba(23, 108, 95, 0.20);
   /* 阴影三档：从现有强度归纳；玻璃/发光/focus 光环等语义阴影不走 token */
   --shadow-sm: 0 10px 26px rgba(22, 26, 30, 0.06);
   --shadow-md: 0 14px 44px rgba(22, 26, 30, 0.08);
@@ -124,6 +126,29 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* 品牌化文字选中色：浅绿底 + 深墨字 */
+::selection {
+  background: rgba(23, 108, 95, 0.16);
+  color: var(--ink);
+}
+
+/* 抽屉等内部滚动容器的细滚动条（仅 WebKit） */
+.settings-drawer::-webkit-scrollbar,
+.ledger-management-drawer::-webkit-scrollbar {
+  width: 8px;
+}
+
+.settings-drawer::-webkit-scrollbar-thumb,
+.ledger-management-drawer::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-pill);
+  background: rgba(91, 98, 95, 0.28); /* --muted 低透明 */
+}
+
+.settings-drawer::-webkit-scrollbar-track,
+.ledger-management-drawer::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 [hidden] {
@@ -567,6 +592,7 @@ h3 {
   z-index: 0;
   border-radius: inherit;
   /* 选中态填充：用各家深文字色保证白字对比度 ≥ 4.5:1（WCAG AA） */
+  background: var(--family-text); /* 老 WebView 不支持 color-mix 时的静态回退 */
   background:
     radial-gradient(ellipse at 28% 0%, rgba(255, 255, 255, 0.10), transparent 58%),
     linear-gradient(135deg, color-mix(in srgb, var(--family-text) 92%, white), var(--family-text));
@@ -625,7 +651,7 @@ h3 {
 
 .family-tag:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--family-color) 20%, transparent);
+  box-shadow: var(--focus-ring);
 }
 
 .section-heading.compact {
@@ -699,7 +725,15 @@ select {
 input:focus,
 select:focus {
   border-color: var(--green);
-  box-shadow: 0 0 0 4px rgba(23, 108, 95, 0.14);
+  box-shadow: var(--focus-ring);
+}
+
+/* 键盘导航统一光环：按钮/摘要等其余可交互元素兜底 */
+button:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
 }
 
 input[type="number"] {
@@ -753,7 +787,7 @@ select {
 select:focus,
 input[type="date"]:focus {
   border-color: var(--green);
-  box-shadow: 0 0 0 4px rgba(23, 108, 95, 0.14);
+  box-shadow: var(--focus-ring);
 }
 
 .full-row {
@@ -1269,6 +1303,7 @@ input[type="date"]:focus {
   inset: 0;
   z-index: 0;
   border-radius: inherit;
+  background: rgba(23, 108, 95, 0.18); /* 老 WebView 不支持 color-mix 时的静态回退 */
   background:
     linear-gradient(
       135deg,
@@ -2234,6 +2269,7 @@ body.ledger-management-open .mobile-submit-bar {
   inset: 0;
   z-index: 0;
   border-radius: inherit;
+  background: var(--category-gradient); /* 老 WebView 不支持 color-mix 时的静态回退 */
   background:
     radial-gradient(ellipse at 30% 0%, rgba(255, 255, 255, 0.10), transparent 58%),
     linear-gradient(135deg, color-mix(in srgb, var(--category-gradient) 94%, white), var(--category-gradient));
@@ -2293,9 +2329,7 @@ body.ledger-management-open .mobile-submit-bar {
 
 .selectable-category-chip:focus-visible {
   outline: 0;
-  box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--category-gradient) 30%, transparent),
-    0 0 42px -16px var(--category-gradient);
+  box-shadow: var(--focus-ring);
 }
 
 @keyframes choice-select-pop {
@@ -2637,16 +2671,6 @@ body.ledger-management-open .mobile-submit-bar {
   text-align: center;
 }
 
-.settlement-done-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  min-height: 34px;
-  border-radius: var(--radius-pill);
-  background: rgba(23, 108, 95, 0.12);
-  font-weight: 700;
-}
-
 .settlement-done small {
   color: var(--muted);
   font-size: 0.8rem;
@@ -2668,6 +2692,18 @@ body.ledger-management-open .mobile-submit-bar {
   color: #676158;
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+/* 空状态插画：三个交叠圆母题（同 favicon），低饱和三家庭色 */
+.empty-state-art {
+  display: block;
+  width: 84px;
+  height: auto;
+  margin: 2px auto 8px;
+}
+
+.empty-state-art circle {
+  mix-blend-mode: multiply;
 }
 
 .ledger-section {
@@ -2855,8 +2891,7 @@ body.ledger-management-open .mobile-submit-bar {
 .ledger-item:focus-visible {
   outline: 0;
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--family-color) 36%, white),
-    0 0 0 4px color-mix(in srgb, var(--family-color) 16%, transparent),
+    var(--focus-ring),
     var(--shadow-lg);
 }
 
@@ -4008,6 +4043,7 @@ body.ledger-management-open .mobile-submit-bar {
     min-height: 46px;
     border-color: color-mix(in srgb, var(--submit-color, var(--green)) 48%, rgba(255, 255, 255, 0.62));
     border-radius: var(--control-radius-large);
+    background: var(--submit-color, var(--green)); /* color-mix 静态回退 */
     background:
       linear-gradient(135deg, color-mix(in srgb, var(--submit-color, var(--green)) 92%, white), var(--submit-color, var(--green))),
       var(--submit-color, var(--green));
