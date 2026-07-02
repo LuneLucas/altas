@@ -359,8 +359,8 @@ h3 {
 .settlement-block,
 .ledger-item {
   border: 1px solid var(--line);
-  /* 静态面板用实底：玻璃材质只留给悬浮层（提交栏 / toast / 遮罩） */
-  background: rgba(255, 255, 255, 0.86);
+  /* 静态面板用实底（--surface）：玻璃材质只留给悬浮层（提交栏 / toast / 遮罩） */
+  background: var(--surface);
   box-shadow: var(--shadow-md);
 }
 
@@ -1743,8 +1743,8 @@ body.ledger-management-open .mobile-submit-bar {
 .ledger-management-tools,
 .ledger-manager-card {
   border: 1px solid var(--line);
-  /* 抽屉内面板坐在近实底抽屉上，玻璃不可见，改实底省性能 */
-  background: rgba(255, 255, 255, 0.86);
+  /* 抽屉内面板坐在近实底抽屉上，玻璃不可见，改实底（--surface）省性能 */
+  background: var(--surface);
   box-shadow: var(--shadow-md);
 }
 
@@ -4493,6 +4493,194 @@ body.ledger-management-open .mobile-submit-bar {
 
   .selectable-category-chip.is-selected:active {
     transform: translateY(-1px);
+  }
+}
+
+/* 深色模式骨架：一层变量映射 + 家庭文字色消费端提亮（JS 常量与结构不动） */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #141816;
+    --surface: rgba(35, 42, 39, 0.92);
+    --surface-strong: rgba(40, 47, 44, 0.96);
+    --surface-soft: rgba(30, 36, 33, 0.78);
+    --ink: #e8ece9;
+    --muted: #a7b0ab;
+    --line: rgba(232, 236, 233, 0.10);
+    --line-dark: rgba(232, 236, 233, 0.16);
+    --green: #58b09b;        /* 文字/边框语义提亮；按钮填充由 JS 内联 --submit-color 提供，不受影响 */
+    --green-dark: #6cc2ad;   /* 数字/强调文字 7.1:1 */
+    /* --total-text-color / --total-label-color 不映射：总支出带的浅渐变由 JS 内联，墨色文字继续成立 */
+  }
+
+  /* body 底色渐变的白色层改暗色等价物 */
+  body {
+    background:
+      radial-gradient(ellipse at 16% 2%, rgba(169, 206, 181, 0.05), transparent 42%),
+      radial-gradient(ellipse at 84% 8%, rgba(185, 201, 230, 0.05), transparent 40%),
+      radial-gradient(ellipse at 92% 86%, rgba(239, 194, 191, 0.04), transparent 44%),
+      linear-gradient(180deg, rgba(24, 29, 27, 0.99) 0%, rgba(20, 24, 22, 0.99) 52%, rgba(22, 27, 25, 0.99) 100%),
+      var(--bg);
+  }
+
+  /* 抽屉与确认框的白色渐变改暗面 */
+  .settings-drawer,
+  .ledger-management-drawer {
+    background:
+      linear-gradient(145deg, rgba(40, 47, 44, 0.96), rgba(30, 36, 33, 0.92)),
+      rgba(20, 24, 22, 0.96);
+  }
+
+  .confirm-dialog {
+    border-color: rgba(232, 236, 233, 0.12);
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(169, 206, 181, 0.08), transparent 48%),
+      linear-gradient(145deg, rgba(40, 47, 44, 0.96), rgba(30, 36, 33, 0.90)),
+      rgba(20, 24, 22, 0.95);
+  }
+
+  /* 家庭文字色消费端提亮：内联注入的 --family-text 系深色，混白 50% 约 7:1 */
+  .family-tag,
+  .split-amount-row,
+  .split-amount-row input,
+  .settings-family span,
+  .member-stepper,
+  .member-stepper button,
+  .member-stepper strong,
+  .family-row > span,
+  .settlement-from strong,
+  .ledger-family,
+  .ledger-edit-button,
+  .ledger-amount {
+    color: color-mix(in srgb, var(--family-text, var(--ink)) 50%, white);
+  }
+
+  .amount-label > span:first-child,
+  .currency-mark,
+  .amount-label input,
+  .amount-label.amount-active .currency-mark {
+    color: color-mix(in srgb, var(--selected-family-text, var(--ink)) 50%, white);
+  }
+
+  .amount-label input {
+    -webkit-text-fill-color: color-mix(in srgb, var(--selected-family-text, var(--ink)) 50%, white);
+  }
+
+  .settlement-to strong {
+    color: color-mix(in srgb, var(--settlement-target-text, var(--ink)) 50%, white);
+  }
+
+  /* 提交栏玻璃与摘要浅底转暗 */
+  .mobile-submit-bar {
+    background:
+      radial-gradient(ellipse at 78% 50%, color-mix(in srgb, var(--submit-color, var(--green)) 10%, transparent), transparent 62%),
+      linear-gradient(135deg, rgba(40, 47, 44, 0.30), rgba(30, 36, 33, 0.18)),
+      rgba(20, 24, 22, 0.30);
+  }
+
+  .mobile-submit-summary {
+    background: rgba(20, 24, 22, 0.55);
+  }
+
+  /* 亮色字面量组件底转暗 */
+  .entry-panel {
+    background:
+      radial-gradient(ellipse at 18% 0%, rgba(169, 206, 181, 0.07), transparent 48%),
+      linear-gradient(145deg, rgba(38, 45, 42, 0.94), rgba(28, 34, 31, 0.80)),
+      rgba(24, 29, 27, 0.88);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 26px 86px rgba(0, 0, 0, 0.32);
+  }
+
+  .insights-panel {
+    background:
+      linear-gradient(145deg, rgba(36, 43, 40, 0.82), rgba(28, 34, 31, 0.62)),
+      rgba(24, 29, 27, 0.72);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      var(--shadow-md);
+  }
+
+  input,
+  select {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .ghost-button {
+    background: rgba(255, 255, 255, 0.10);
+  }
+
+  .ghost-button:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .sync-status {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05)),
+      rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .family-tag {
+    border-color: color-mix(in srgb, var(--family-color) 26%, rgba(255, 255, 255, 0.10));
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)),
+      color-mix(in srgb, var(--family-color) 10%, transparent);
+  }
+
+  .family-tag:hover {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06)),
+      color-mix(in srgb, var(--family-color) 14%, transparent);
+  }
+
+  .amount-label {
+    border-color: color-mix(in srgb, var(--submit-color, var(--green)) 28%, rgba(255, 255, 255, 0.10));
+    background:
+      linear-gradient(135deg, rgba(40, 47, 44, 0.90), rgba(30, 36, 33, 0.70)),
+      rgba(24, 29, 27, 0.78);
+  }
+
+  .empty-state {
+    border-color: rgba(232, 236, 233, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .settlement-done {
+    border-color: rgba(88, 176, 155, 0.24);
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03)),
+      rgba(169, 206, 181, 0.10);
+  }
+
+  .category-summary-block {
+    background:
+      linear-gradient(135deg, rgba(30, 36, 33, 0.74), rgba(24, 29, 27, 0.58)),
+      var(--category-summary-aura),
+      var(--category-summary-gradient);
+  }
+
+  .split-scope-toggle {
+    border-color: rgba(232, 236, 233, 0.14);
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)),
+      rgba(255, 255, 255, 0.05);
+  }
+
+  /* 未选中类别芯片：底转暗、文字混白提亮 */
+  .selectable-category-chip {
+    background: color-mix(in srgb, var(--category-gradient) 12%, rgba(255, 255, 255, 0.06));
+    color: color-mix(in srgb, var(--category-text, var(--ink)) 45%, white);
+  }
+
+  .empty-state small {
+    color: rgba(232, 236, 233, 0.62);
+  }
+
+  /* 三圆插画在暗底用 screen 混合保持可见 */
+  .empty-state-art circle {
+    mix-blend-mode: screen;
   }
 }
 
