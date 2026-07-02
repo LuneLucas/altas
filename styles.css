@@ -92,6 +92,10 @@
     radial-gradient(circle at 86% 42%, rgba(230, 199, 170, 0.30), transparent 46%);
   --category-glow-left: rgba(185, 216, 204, 0.46);
   --category-glow-right: rgba(230, 199, 170, 0.46);
+  /* 金额字号三级阶梯 */
+  --num-lg: clamp(2.45rem, 6vw, 4.6rem);   /* 总支出主数字（保留英雄字号，断点精调见媒体查询） */
+  --num-md: clamp(1.15rem, 3vw, 1.42rem);  /* 列表/平账金额 */
+  --num-sm: 0.95rem;                        /* 次要数字 */
   --radius-lg: 30px;
   --radius-md: 24px;
   --radius-sm: 18px;
@@ -131,9 +135,10 @@ body {
     var(--bg);
   background-attachment: fixed;
   color: var(--ink);
+  /* 两级字体栈：西文与数字走系统栈，中文明确 PingFang SC → 雅黑 → 兜底 */
   font-family:
-    "Google Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    system-ui, -apple-system, "Segoe UI", Roboto,
+    "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 button,
@@ -269,6 +274,7 @@ button:disabled {
   color: var(--green);
   font-size: 0.82rem;
   font-weight: 700;
+  letter-spacing: 0.05em; /* 全局唯一保留 letter-spacing 的层级 */
 }
 
 h1,
@@ -292,7 +298,7 @@ h2 {
 
 h3 {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.95rem; /* 与 h2(1.24)/eyebrow(0.82) 形成约 1.2~1.25 模数阶梯 */
   font-weight: 700;
 }
 
@@ -301,6 +307,16 @@ h3 {
   grid-template-columns: 1.7fr 0.9fr 0.72fr;
   gap: 14px;
   margin-bottom: 18px;
+}
+
+/* 金额等宽数字：声明在容器上靠继承生效，列表滚动与数字变化不再左右抖动 */
+.metric strong,
+.ledger-item,
+.stat-block,
+.settlement-block,
+.split-scope-panel,
+.mobile-submit-summary {
+  font-variant-numeric: tabular-nums;
 }
 
 .glass,
@@ -406,7 +422,7 @@ h3 {
   position: relative;
   overflow: hidden;
   color: var(--total-text-color);
-  font-size: clamp(2.45rem, 6vw, 4.6rem);
+  font-size: var(--num-lg);
   min-height: 1.08em;
   text-shadow:
     0 1px 0 rgba(255, 255, 255, 0.42),
@@ -2535,7 +2551,7 @@ body.ledger-management-open .mobile-submit-bar {
 
 .settlement-overview strong {
   color: var(--green-dark);
-  font-size: 0.92rem;
+  font-size: var(--num-sm);
 }
 
 .settlement-party {
@@ -2596,7 +2612,7 @@ body.ledger-management-open .mobile-submit-bar {
 
 .settlement-amount strong {
   color: var(--coral);
-  font-size: 1.28rem;
+  font-size: var(--num-md);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -3124,7 +3140,7 @@ body.ledger-management-open .mobile-submit-bar {
 .ledger-amount {
   grid-area: amount;
   color: color-mix(in srgb, var(--family-text) 88%, var(--ink));
-  font-size: 1.18rem;
+  font-size: var(--num-md);
   font-weight: 800;
   letter-spacing: 0;
   white-space: nowrap;
