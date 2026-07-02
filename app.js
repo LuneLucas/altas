@@ -66,6 +66,7 @@ const elements = {
   ledgerInheritSettingsInput: document.querySelector("#ledgerInheritSettingsInput"),
   ledgerJoinForm: document.querySelector("#ledgerJoinForm"),
   ledgerJoinInput: document.querySelector("#ledgerJoinInput"),
+  entryPanel: document.querySelector(".entry-panel"),
   amountLabel: document.querySelector("#amountLabel"),
   payerField: document.querySelector("#payerField"),
   familyRoster: document.querySelector("#familyRoster"),
@@ -109,6 +110,7 @@ const elements = {
   settlementList: document.querySelector("#settlementList"),
   ledgerFamilyFilter: document.querySelector("#ledgerFamilyFilter"),
   ledgerCategoryFilter: document.querySelector("#ledgerCategoryFilter"),
+  ledgerSection: document.querySelector(".ledger-section"),
   ledgerList: document.querySelector("#ledgerList"),
   mobileSubmitBar: document.querySelector("#mobileSubmitBar"),
   mobileSubmitSummary: document.querySelector("#mobileSubmitSummary"),
@@ -123,7 +125,11 @@ let activeSplitMode = "all";
 let activeSplitFamilyIds = state.families.map((family) => family.id);
 let activeSplitAmounts = {};
 let splitScopeOpen = false;
+let splitScopeCloseTimer = 0;
+let splitScopeSwitching = false;
+let splitScopeSwitchTimer = 0;
 let lastAddedExpenseId = "";
+let expandedExpenseId = "";
 let lastAddedCategory = "";
 let activatingPayerId = "";
 let activatingCategory = "";
@@ -656,6 +662,14 @@ function formatMoney(cents) {
   }).format(cents / 100);
 }
 
+function formatLedgerMoney(cents) {
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
 function expenseToCents(expense) {
   return Math.round(Number(expense.amount) * 100);
 }
@@ -924,7 +938,8 @@ function renderSplitScope() {
   ensureActiveSplitState();
   elements.splitScopeToggle.setAttribute("aria-expanded", String(splitScopeOpen));
   elements.splitScopeSummary.textContent = formatActiveSplitSummary();
-  elements.splitScopePanel.hidden = !splitScopeOpen;
+  elements.splitScopePanel.classList.toggle("is-switching", splitScopeSwitching);
+  updateSplitScopePanelState();
 
   elements.splitModeButtons.innerHTML = splitModeOptions
     .map((option) => {
@@ -943,8 +958,8 @@ function renderSplitScope() {
     .map((family) => {
       const selected = activeSplitFamilyIds.includes(family.id);
       return `
-        <button class="split-family-chip${selected ? " is-selected" : ""}" type="button" data-split-family="${escapeHtml(family.id)}" style="${familyStyle(family.id)}" aria-pressed="${selected}">
-          ${escapeHtml(family.name)}
+        <button class="family-tag split-family-chip${selected ? " is-selected" : ""}" type="button" data-split-family="${escapeHtml(family.id)}" style="${familyStyle(family.id)}" aria-pressed="${selected}">
+          <span>${escapeHtml(family.name)}</span>
         </button>
       `;
     })
@@ -965,6 +980,35 @@ function renderSplitScope() {
       .join("")}
     <p class="split-total-line">${escapeHtml(formatCustomSplitTotalLine())}</p>
   `;
+}
+
+function updateSplitScopePanelState() {
+  const panel = elements.splitScopePanel;
+
+  if (splitScopeOpen) {
+    window.clearTimeout(splitScopeCloseTimer);
+    panel.hidden = false;
+    panel.classList.remove("is-closing");
+    panel.classList.add("is-open");
+    return;
+  }
+
+  panel.classList.remove("is-open");
+
+  if (panel.hidden) {
+    panel.classList.remove("is-closing");
+    return;
+  }
+
+  panel.classList.add("is-closing");
+  const delay = prefersReducedMotion() ? 0 : getCssDurationMs("--motion-fast", 401) + 80;
+
+  window.clearTimeout(splitScopeCloseTimer);
+  splitScopeCloseTimer = window.setTimeout(() => {
+    if (splitScopeOpen) return;
+    panel.hidden = true;
+    panel.classList.remove("is-closing");
+  }, delay);
 }
 
 function ensureActiveSplitState() {
@@ -1181,12 +1225,30 @@ function renderTotalAmount(nextText, shouldAnimate) {
   }, getCssDurationMs("--number-swap-motion", 980) + 60);
 }
 
+function renderSoftText(element, nextText, shouldAnimate = false) {
+  if (!element) return;
+  const currentText = element.textContent || "";
+  if (!shouldAnimate || currentText === nextText || prefersReducedMotion()) {
+    element.classList.remove("is-soft-refresh");
+    element.textContent = nextText;
+    return;
+  }
+
+  element.classList.remove("is-soft-refresh");
+  element.textContent = nextText;
+  void element.offsetWidth;
+  element.classList.add("is-soft-refresh");
+  window.setTimeout(() => {
+    element.classList.remove("is-soft-refresh");
+  }, getCssDurationMs("--motion", 534) + 80);
+}
+
 function renderSummary({ animateFinancialChanges = false } = {}) {
   const summary = calculateSummary();
   const enterClass = animateFinancialChanges ? " is-entering" : "";
   renderTotalAmount(formatMoney(summary.totalCents), animateFinancialChanges);
-  elements.shareAmount.textContent = formatMoney(summary.shareCents);
-  elements.expenseCount.textContent = String(state.expenses.length);
+  renderSoftText(elements.shareAmount, formatMoney(summary.shareCents), animateFinancialChanges);
+  renderSoftText(elements.expenseCount, String(state.expenses.length), animateFinancialChanges);
   renderTotalMetricGradient(summary);
 
   elements.paidByFamily.innerHTML = state.families
@@ -1283,14 +1345,15 @@ function renderLedger({ animateFinancialChanges = false } = {}) {
         <section class="ledger-day-group${enterClass}">
           <div class="ledger-day-heading">
             <time datetime="${escapeHtml(group.date)}">${escapeHtml(formatLedgerDate(group.date))}</time>
-            <strong>${formatMoney(group.totalCents)}</strong>
+            <strong>${formatLedgerMoney(group.totalCents)}</strong>
           </div>
           <div class="ledger-day-items">
             ${group.expenses
               .map(
-                (expense) => `
-                  <article class="ledger-item${expense.id === lastAddedExpenseId ? " is-entering" : ""}${expense.id === editingExpenseId ? " is-editing" : ""}" style="${familyStyle(expense.payerId)}" data-expense-id="${escapeHtml(expense.id)}" tabindex="0" aria-label="编辑这笔账单">
-                    <time class="ledger-date" datetime="${escapeHtml(expense.date)}">${escapeHtml(expense.date)}</time>
+                (expense) => {
+                  const isExpanded = expense.id === expandedExpenseId;
+                  return `
+                  <article class="ledger-item${expense.id === lastAddedExpenseId ? " is-entering" : ""}${expense.id === editingExpenseId ? " is-editing" : ""}${isExpanded ? " is-expanded" : ""}" style="${familyStyle(expense.payerId)}" data-expense-id="${escapeHtml(expense.id)}" tabindex="0" aria-expanded="${isExpanded}" aria-label="${isExpanded ? "编辑这笔账单" : "展开这笔账单"}">
                     <div class="ledger-main">
                       <div class="ledger-title">
                         <span class="ledger-family">${escapeHtml(getFamilyName(expense.payerId))}</span>
@@ -1299,10 +1362,12 @@ function renderLedger({ animateFinancialChanges = false } = {}) {
                       <p class="ledger-note">${escapeHtml(expense.note || "无备注")}</p>
                       <small class="ledger-scope">${escapeHtml(formatExpenseSplitSummary(expense))}</small>
                     </div>
-                    <strong class="ledger-amount">${formatMoney(expenseToCents(expense))}</strong>
+                    <time class="ledger-date" datetime="${escapeHtml(expense.date)}">${formatLedgerCardDate(expense.date)}</time>
+                    <strong class="ledger-amount">${formatLedgerMoney(expenseToCents(expense))}</strong>
                     <button class="delete-button" type="button" data-delete-id="${escapeHtml(expense.id)}" aria-label="删除这笔账">×</button>
                   </article>
-                `,
+                `;
+                },
               )
               .join("")}
           </div>
@@ -1337,6 +1402,12 @@ function formatLedgerDate(date) {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
   return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(parsed);
+}
+
+function formatLedgerCardDate(date) {
+  const [month, day] = String(date || "").split("-").slice(1);
+  if (!month || !day) return escapeHtml(date || "");
+  return `<span>${escapeHtml(month)}月</span><strong>${escapeHtml(day)}日</strong>`;
 }
 
 function renderEditState() {
@@ -1454,7 +1525,9 @@ function handleExpenseSubmit(event) {
 
   elements.expenseForm.reset();
   resetSplitScope();
-  render({ animateFinancialChanges: true });
+  smoothContainerResize(elements.ledgerSection, () => {
+    render({ animateFinancialChanges: true });
+  });
   syncCloudExpense(savedExpense).catch(() => {
     showToast({ message: "云端保存失败，本地已保留" });
   });
@@ -1521,6 +1594,7 @@ function handleSplitScopeClick(event) {
   if (modeButton) {
     const nextMode = normalizeSplitMode(modeButton.dataset.splitMode);
     if (nextMode !== activeSplitMode) {
+      markSplitScopeSwitching();
       activeSplitMode = nextMode;
       if (activeSplitMode === "families" && !activeSplitFamilyIds.length) {
         activeSplitFamilyIds = state.families.map((family) => family.id);
@@ -1543,6 +1617,16 @@ function handleSplitScopeClick(event) {
   }
   renderSplitScope();
   renderMobileSubmitBar();
+}
+
+function markSplitScopeSwitching() {
+  if (prefersReducedMotion()) return;
+  splitScopeSwitching = true;
+  window.clearTimeout(splitScopeSwitchTimer);
+  splitScopeSwitchTimer = window.setTimeout(() => {
+    splitScopeSwitching = false;
+    elements.splitScopePanel.classList.remove("is-switching");
+  }, 260);
 }
 
 function handleSplitAmountInput(event) {
@@ -1631,6 +1715,10 @@ function handleLedgerClick(event) {
 
   const item = event.target.closest("[data-expense-id]");
   if (!item) return;
+  if (!item.classList.contains("is-expanded")) {
+    expandLedgerItem(item.dataset.expenseId);
+    return;
+  }
   startEditExpense(item.dataset.expenseId);
 }
 
@@ -1639,13 +1727,72 @@ function handleLedgerKeydown(event) {
   const item = event.target.closest("[data-expense-id]");
   if (!item || event.target.closest("button")) return;
   event.preventDefault();
+  if (!item.classList.contains("is-expanded")) {
+    expandLedgerItem(item.dataset.expenseId);
+    return;
+  }
   startEditExpense(item.dataset.expenseId);
+}
+
+function expandLedgerItem(expenseId) {
+  if (!expenseId || expandedExpenseId === expenseId) return;
+  const items = [...elements.ledgerList.querySelectorAll(".ledger-item")];
+  const flipRects = captureLedgerTransitionRects(items);
+  expandedExpenseId = expenseId;
+  smoothContainerResize(elements.ledgerSection, () => {
+    items.forEach((item) => {
+      const isExpanded = item.dataset.expenseId === expenseId;
+      item.classList.toggle("is-expanded", isExpanded);
+      item.setAttribute("aria-expanded", String(isExpanded));
+      item.setAttribute("aria-label", isExpanded ? "编辑这笔账单" : "展开这笔账单");
+    });
+    playLedgerTransitionRects(flipRects);
+  });
+}
+
+function captureLedgerTransitionRects(items) {
+  if (prefersReducedMotion()) return new Map();
+  const rects = new Map();
+  const selectors = [".ledger-main", ".ledger-family", ".category-pill", ".ledger-note", ".ledger-amount", ".ledger-date", ".delete-button"];
+  items.forEach((item) => {
+    item.querySelectorAll(selectors.join(",")).forEach((element) => {
+      const rect = element.getBoundingClientRect();
+      if (rect.width > 1 && rect.height > 1) rects.set(element, rect);
+    });
+  });
+  return rects;
+}
+
+function playLedgerTransitionRects(rects) {
+  if (!rects.size || prefersReducedMotion()) return;
+  const duration = getCssDurationMs("--motion", 534);
+  const easing = getComputedStyle(document.documentElement).getPropertyValue("--settle").trim() || "cubic-bezier(0.16, 0.9, 0.14, 1)";
+
+  rects.forEach((fromRect, element) => {
+    if (!element.isConnected) return;
+    const toRect = element.getBoundingClientRect();
+    if (toRect.width <= 1 || toRect.height <= 1) return;
+
+    const dx = fromRect.left - toRect.left;
+    const dy = fromRect.top - toRect.top;
+    const moved = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+    if (!moved) return;
+
+    element.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px)` },
+        { transform: "translate(0, 0)" },
+      ],
+      { duration, easing, fill: "both" },
+    );
+  });
 }
 
 function deleteExpense(expenseId, item) {
   const expenseIndex = state.expenses.findIndex((expense) => expense.id === expenseId);
   if (expenseIndex < 0) return;
   const [deletedExpense] = state.expenses.slice(expenseIndex, expenseIndex + 1);
+  if (expandedExpenseId === expenseId) expandedExpenseId = "";
   item?.classList.add("is-removing");
   const button = item?.querySelector("[data-delete-id]");
   if (button) button.disabled = true;
@@ -1657,13 +1804,17 @@ function deleteExpense(expenseId, item) {
       showToast({ message: "云端删除失败，本地已删除" });
     });
     if (editingExpenseId === expenseId) cancelEdit();
-    render({ animateFinancialChanges: true });
+    smoothContainerResize(elements.ledgerSection, () => {
+      render({ animateFinancialChanges: true });
+    });
     showToast({
       message: "已删除账单",
       actionLabel: "撤销",
       onAction: () => {
         state.expenses.splice(Math.min(expenseIndex, state.expenses.length), 0, deletedExpense);
-        render({ animateFinancialChanges: true });
+        smoothContainerResize(elements.ledgerSection, () => {
+          render({ animateFinancialChanges: true });
+        });
         syncCloudExpense(deletedExpense).catch(() => {
           showToast({ message: "云端撤销失败，本地已恢复" });
         });
@@ -1676,6 +1827,7 @@ function handleClearLedger() {
   if (!state.expenses.length) return;
 
   const deletedExpenses = [...state.expenses];
+  expandedExpenseId = "";
   const previousDate = state.activeDate;
   const items = [...elements.ledgerList.querySelectorAll(".ledger-item")];
   items.forEach((item, index) => {
@@ -1690,14 +1842,18 @@ function handleClearLedger() {
       clearCloudLedger().catch(() => {
         showToast({ message: "云端清空失败，本地已清空" });
       });
-      render({ animateFinancialChanges: true });
+      smoothContainerResize(elements.ledgerSection, () => {
+        render({ animateFinancialChanges: true });
+      });
       showToast({
         message: "已清空账本",
         actionLabel: "撤销",
         onAction: () => {
           state.expenses = deletedExpenses;
           state.activeDate = previousDate;
-          render({ animateFinancialChanges: true });
+          smoothContainerResize(elements.ledgerSection, () => {
+            render({ animateFinancialChanges: true });
+          });
           syncAllLocalDataToCloud().catch(() => {
             showToast({ message: "云端撤销失败，本地已恢复" });
           });
@@ -1951,11 +2107,17 @@ function renderTotalMetricGradient(summary) {
   const aura = buildGradientAura(activeSegments);
   const firstFamily = activeSegments[0].family;
   const lastFamily = activeSegments[activeSegments.length - 1].family;
+  const firstVisual = getFamilyVisual(firstFamily.id);
+  const lastVisual = getFamilyVisual(lastFamily.id);
+  const blendedBase = mixHexColors(firstVisual.gradient, lastVisual.gradient, 0.5);
 
   elements.totalMetric.style.setProperty("--total-gradient", `linear-gradient(135deg, ${gradientStops.join(", ")})`);
   elements.totalMetric.style.setProperty("--total-aura", aura);
-  elements.totalMetric.style.setProperty("--total-glow-left", colorWithAlpha(getFamilyVisual(firstFamily.id).gradient, 0.42));
-  elements.totalMetric.style.setProperty("--total-glow-right", colorWithAlpha(getFamilyVisual(lastFamily.id).gradient, 0.42));
+  elements.totalMetric.style.setProperty("--total-glow-left", colorWithAlpha(firstVisual.gradient, 0.42));
+  elements.totalMetric.style.setProperty("--total-glow-right", colorWithAlpha(lastVisual.gradient, 0.42));
+  elements.totalMetric.style.setProperty("--total-edge-left", colorWithAlpha(firstVisual.gradient, 0.34));
+  elements.totalMetric.style.setProperty("--total-edge-right", colorWithAlpha(lastVisual.gradient, 0.34));
+  elements.totalMetric.style.setProperty("--total-edge-soft", colorWithAlpha(blendedBase, 0.22));
 }
 
 function renderCategorySummaryGradient(summary, activeCategories) {
@@ -2143,6 +2305,50 @@ function getCssDurationMs(variableName, fallback) {
   return fallback;
 }
 
+function smoothContainerResize(element, update) {
+  if (!element || prefersReducedMotion()) {
+    update();
+    return;
+  }
+
+  element._resizeAnimation?.cancel();
+  window.clearTimeout(element._resizeTimer);
+  const startHeight = element.getBoundingClientRect().height;
+  element.classList.add("is-resizing");
+  element.style.height = `${startHeight}px`;
+  element.style.overflow = "hidden";
+
+  update();
+
+  element.style.height = "auto";
+  const endHeight = element.getBoundingClientRect().height;
+
+  if (Math.abs(startHeight - endHeight) < 1) {
+    element.style.removeProperty("height");
+    element.style.removeProperty("overflow");
+    element.classList.remove("is-resizing");
+    return;
+  }
+
+  element.style.height = `${endHeight}px`;
+  const duration = getCssDurationMs("--motion", 534);
+  const easing = getComputedStyle(document.documentElement).getPropertyValue("--settle").trim() || "cubic-bezier(0.16, 0.9, 0.14, 1)";
+  const animation = element.animate([{ height: `${startHeight}px` }, { height: `${endHeight}px` }], { duration, easing, fill: "both" });
+  element._resizeAnimation = animation;
+
+  const cleanup = () => {
+    if (element._resizeAnimation !== animation) return;
+    element.style.removeProperty("height");
+    element.style.removeProperty("overflow");
+    element.classList.remove("is-resizing");
+    element._resizeAnimation = null;
+    window.clearTimeout(element._resizeTimer);
+  };
+
+  animation.addEventListener("finish", cleanup, { once: true });
+  element._resizeTimer = window.setTimeout(cleanup, duration + 140);
+}
+
 function colorWithAlpha(hex, alpha) {
   const { red, green, blue } = hexToRgb(hex);
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
@@ -2189,11 +2395,14 @@ function startEditExpense(expenseId) {
   if (!expense) return;
 
   editingExpenseId = expense.id;
+  expandedExpenseId = expense.id;
   state.selectedPayerId = expense.payerId;
   state.activeCategory = expense.category;
   state.activeDate = expense.date;
   setSplitScopeFromExpense(expense);
-  render();
+  smoothContainerResize(elements.entryPanel, () => {
+    render();
+  });
   elements.amountInput.value = String(expense.amount);
   elements.noteInput.value = expense.note;
   elements.expenseForm.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
@@ -2205,7 +2414,9 @@ function cancelEdit() {
   editingExpenseId = "";
   elements.expenseForm.reset();
   resetSplitScope();
-  render();
+  smoothContainerResize(elements.entryPanel, () => {
+    render();
+  });
   elements.amountInput.focus();
 }
 
@@ -2365,11 +2576,15 @@ elements.dateInput.addEventListener("change", () => {
 });
 elements.ledgerFamilyFilter.addEventListener("change", () => {
   state.ledgerFamilyFilter = normalizePayerId(elements.ledgerFamilyFilter.value);
-  render();
+  smoothContainerResize(elements.ledgerSection, () => {
+    render({ animateFinancialChanges: true });
+  });
 });
 elements.ledgerCategoryFilter.addEventListener("change", () => {
   state.ledgerCategoryFilter = normalizeCategoryFilter(elements.ledgerCategoryFilter.value, state.categories);
-  render();
+  smoothContainerResize(elements.ledgerSection, () => {
+    render({ animateFinancialChanges: true });
+  });
 });
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
