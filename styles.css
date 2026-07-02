@@ -72,7 +72,7 @@
   --total-edge-right: rgba(239, 194, 191, 0.36);
   --total-edge-soft: rgba(204, 197, 181, 0.22);
   --total-text-color: #25302d;
-  --total-label-color: rgba(37, 48, 45, 0.62);
+  --total-label-color: rgba(37, 48, 45, 0.72); /* 对比度 ≥ 4.5:1 */
   --category-bg: #e5e2d8;
   --category-text: #696252;
   --category-border: rgba(104, 94, 72, 0.24);
@@ -546,9 +546,10 @@ h3 {
   inset: 0;
   z-index: 0;
   border-radius: inherit;
+  /* 选中态填充：用各家深文字色保证白字对比度 ≥ 4.5:1（WCAG AA） */
   background:
     radial-gradient(ellipse at 28% 0%, rgba(255, 255, 255, 0.10), transparent 58%),
-    linear-gradient(135deg, color-mix(in srgb, var(--family-color) 94%, white), var(--family-color));
+    linear-gradient(135deg, color-mix(in srgb, var(--family-text) 92%, white), var(--family-text));
   content: "";
   opacity: 0;
   pointer-events: none;

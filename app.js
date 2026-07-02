@@ -27,7 +27,7 @@ const defaultFamilies = [
 const familyVisuals = {
   "family-a": { color: "#7fa08f", gradient: "#a9ceb5", text: "#496f5f", soft: "rgba(127, 160, 143, 0.64)", wash: "rgba(127, 160, 143, 0.18)" },
   "family-b": { color: "#8fa0bd", gradient: "#b9c9e6", text: "#566a8a", soft: "rgba(143, 160, 189, 0.64)", wash: "rgba(143, 160, 189, 0.18)" },
-  "family-c": { color: "#c89a9a", gradient: "#efc2bf", text: "#986a6a", soft: "rgba(200, 154, 154, 0.62)", wash: "rgba(200, 154, 154, 0.17)" },
+  "family-c": { color: "#c89a9a", gradient: "#efc2bf", text: "#8a5d5d", soft: "rgba(200, 154, 154, 0.62)", wash: "rgba(200, 154, 154, 0.17)" },
 };
 const defaultCategories = ["交通", "住宿", "餐饮", "门票", "购物", "其他"];
 const splitModeOptions = [
